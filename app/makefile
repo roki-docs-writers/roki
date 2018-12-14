@@ -21,7 +21,7 @@ COMPILE=$(CC) $(CFLAGS) -o $@ $< $(LINK)
 
 INSTALL=install -m 755
 
-CONFIGGEN=cure-config-gen
+CONFIGGEN=zeda-config-gen
 CONFIG=roki-config
 TARGET=$(CONFIG) cad2zkc zkcconv z3d2zkc zkc2z3d z3d2gp zvs2zkci zvs2zkcs\
 	rk_ground rk_mp rk_fk rk_ik rk_id rk_ikcell_merge
@@ -38,9 +38,8 @@ $(CONFIG):
 	@echo " CC	" $<
 	@$(COMPILE)
 install: $(TARGET)
-	@echo " INSTALL" $^
+	@echo " INSTALL	" $^
 	@$(INSTALL) $^ $(BINDIR)
-
 clean :
 	@echo " CLEAN"
 	-@rm -f *.o *~ core $(TARGET)

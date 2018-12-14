@@ -14,15 +14,16 @@
 void _rkLinkABIInitInertia(rkLink *link)
 {
   rkABIPrp *ap;
-  zMat3D pcros;
+  zVec3D pc;
+  zMat3D mpcross2;
 
   ap = rkLinkABIPrp(link);
-  zMat3DMul( ZMAT3DIDENT, rkLinkMass(link), zMat6DMat3D(&ap->m,0,0) );
-  zVec3DOuterProdMat3D( rkLinkCOM(link), &pcros );
-  zMat3DMul( &pcros, rkLinkMass(link), zMat6DMat3D(&ap->m,1,0) );
-  zMat3DRev( zMat6DMat3D(&ap->m,1,0), zMat6DMat3D(&ap->m,0,1) );
-  zMulMatMat3D( &pcros, zMat6DMat3D(&ap->m,0,1), zMat6DMat3D(&ap->m,1,1) );
-  zMat3DAddDRC( zMat6DMat3D(&ap->m,1,1), rkLinkInertia(link) );
+  zMat3DCreate( &ap->m.e[0][0], rkLinkMass(link), 0, 0, 0, rkLinkMass(link), 0, 0, 0, rkLinkMass(link) );
+  zVec3DMul( rkLinkCOM(link), rkLinkMass(link), &pc );
+  zVec3DOuterProd2Mat3D( &pc, &ap->m.e[1][0] );
+  zMat3DRev( &ap->m.e[1][0], &ap->m.e[0][1] );
+  zVec3DTripleProd2Mat3D( &pc, rkLinkCOM(link), &mpcross2 );
+  zMat3DSub( rkLinkInertia(link), &mpcross2, &ap->m.e[1][1] );
 }
 
 void rkLinkABIInit(rkLink *link)

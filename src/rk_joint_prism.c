@@ -334,7 +334,7 @@ void _rkJointABIAddAbiPrism(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *p
   zMat6DCol( m, zZ, &tmpv );
   zMat6DRow( m, zZ, &tmpv2 );
   zVec6DMulDRC( &tmpv, -1.0*zMatElem(h,0,0) );
-  zMat6DDyad( &tmpv, &tmpv2, &tmpm );
+  zMat6DDyad( &tmpm, &tmpv, &tmpv2 );
   zMat6DAddDRC( &tmpm, m );
 
   rkJointXferMat6D( f, &tmpm, &tmpm );

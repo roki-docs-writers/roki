@@ -7,7 +7,7 @@
 #ifndef __RK_CONTACT_H__
 #define __RK_CONTACT_H__
 
-#include <cure/cure.h>
+#include <zeda/zeda.h>
 
 __BEGIN_DECLS
 
@@ -23,7 +23,7 @@ typedef enum{ RK_CONTACT_UNCERTAIN, RK_CONTACT_SF, RK_CONTACT_KF } rkContactFric
 
 typedef struct{
   char *__stf[2];        /* stuff binding keys */
-  rkContactType type;             /* contact type (elastic/rigid model) */
+  rkContactType type;    /* contact type (elastic/rigid model) */
   union{
     struct{
       double compensation; /* compensation coefficient */

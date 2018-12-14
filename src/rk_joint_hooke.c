@@ -137,7 +137,7 @@ zFrame3D *_rkJointXferHooke(void *prp, zFrame3D *fo, zFrame3D *f)
   zVec3DCopy( zFrame3DPos(fo), zFrame3DPos(f) );
   /* joint displacements correspond to the rotation angle about
    * z-axis and y-axis, respectively */
-  zMat3DZYXSC( &m, _rkc(prp)->_s[0], _rkc(prp)->_c[0], _rkc(prp)->_s[1], _rkc(prp)->_c[1], 0, 1 );
+  zMat3DFromZYXSC( &m, _rkc(prp)->_s[0], _rkc(prp)->_c[0], _rkc(prp)->_s[1], _rkc(prp)->_c[1], 0, 1 );
   zMulMatMat3D( zFrame3DAtt(fo), &m, zFrame3DAtt(f) );
   return f;
 }

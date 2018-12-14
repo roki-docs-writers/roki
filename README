@@ -16,13 +16,13 @@ RoKi is a software library for robot kinetics computation including:
 It facilitates on-line robot controls as well as off-line robot
 motion analyses, plannings and simulations.
 
-CURE, ZM and Zeo are required.
+ZEDA, ZM and Zeo are required.
 
 -----------------------------------------------------------------
 [Installation / Uninstallation]
 
 <install>
-0. Install CURE, ZM and Zeo in advance.
+0. Install ZEDA, ZM and Zeo in advance.
 
 1. Unpack the distributed archive where you want.
 

@@ -48,7 +48,7 @@ void _rkJointLimDisSpher(void *prp, double *testval, double *limval){
 /* joint displacement set function */
 void _rkJointSetDisSpher(void *prp, double *val){
   _rkJointLimDisSpher( prp, val, _rkc(prp)->aa.e );
-  zMat3DAA( &_rkc(prp)->_att, &_rkc(prp)->aa );
+  zMat3DFromAA( &_rkc(prp)->_att, &_rkc(prp)->aa );
 }
 
 void _rkJointSetVelSpher(void *prp, double *val){
@@ -100,8 +100,8 @@ void _rkJointSubDisSpher(void *prp, double *dis, double *sdis)
   zVec3D aa;
 
   zVec3DCopy( (zVec3D*)dis, &aa );
-  zMat3DAA( &m, &aa );
-  zMat3DAA( &ms, (zVec3D*)sdis );
+  zMat3DFromAA( &m, &aa );
+  zMat3DFromAA( &ms, (zVec3D*)sdis );
   zMat3DError( &m, &ms, (zVec3D*)dis );
 }
 

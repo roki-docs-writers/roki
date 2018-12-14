@@ -341,7 +341,7 @@ void _rkJointABIAddAbiRevol(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *p
   zMat6DCol( m, zZA, &tmpv );
   zMat6DRow( m, zZA, &tmpv2 );
   zVec6DMulDRC( &tmpv, -zMatElem(h,0,0) );
-  zMat6DDyad( &tmpv, &tmpv2, &tmpm );
+  zMat6DDyad( &tmpm, &tmpv, &tmpv2 );
   zMat6DAddDRC( &tmpm, m );
 
   rkJointXferMat6D( f, &tmpm, &tmpm );

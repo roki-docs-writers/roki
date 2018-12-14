@@ -675,15 +675,15 @@ void _rkCDIntegrationNormBREP(zBREP *b1, zBREP *b2, zVec3D *norm)
 zPH3D *_rkCDBREPMergeCH(zBREP *b1, zBREP *b2, zPH3D *ph)
 {
   zBREPVertListCell *vc;
-  zVec3DList vlist;
+  zVec3DAddrList vlist;
 
   zListInit( &vlist );
   zListForEach( &b1->vlist, vc )
-    zVec3DListInsert( &vlist, &vc->data.p, false );
+    zVec3DAddrListInsert( &vlist, &vc->data.p );
   zListForEach( &b2->vlist, vc )
-    zVec3DListInsert( &vlist, &vc->data.p, false );
+    zVec3DAddrListInsert( &vlist, &vc->data.p );
   zCH3DPL( ph, &vlist );
-  zVec3DListDestroy( &vlist,false );
+  zVec3DAddrListDestroy( &vlist );
   return ph;
 }
 

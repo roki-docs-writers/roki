@@ -1,4 +1,4 @@
-#include <cure/cure.h>
+#include <zeda/zeda.h>
 
 typedef struct{
   FILE *fp;

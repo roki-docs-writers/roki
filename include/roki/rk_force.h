@@ -42,62 +42,55 @@ zListClass( rkWrenchList, rkWrench, rkWrenchData );
   rkWrenchClear( c );\
 } while(0)
 
-/* METHOD:
- * rkWrenchListPush, rkWrenchListPop, rkWrenchListDestroy
- * - push from and pop to wrench list.
+/*! \brief push from and pop to wrench list.
  *
- * 'rkWrenchListPush()' pushes a new force list cell 'f' to
- * the list 'fl'.
- * #
- * 'rkWrenchListPop()' pops the latest force list cell from 'fl'.
- * #
- * 'rkWrenchListDestroy()' destroys 'fl', freeing all cells.
- * [NOTES]
- * When 'fl' includes statically-allocated cells,
- * 'rkWrenchListDestroy()' causes segmentation fault.
- * [RETURN VALUE]
- * 'rkWrenchListPush()' returns a pointer to the cell pushed.
- * 'rkWrenchListPop()' returns a pointer to the cell poped.
- * 'rkWrenchListDestroy()' returns no value.
+ * rkWrenchListPush() pushes a new force list cell \a f to the
+ * list \a fl.
+ *
+ * rkWrenchListPop() pops the latest force list cell from \a fl.
+ *
+ * rkWrenchListDestroy() destroys \a fl, freeing all cells.
+ * \notes
+ * When \a fl includes statically-allocated cells, rkWrenchListDestroy()
+ * causes segmentation fault.
+ * \retval
+ * rkWrenchListPush() returns a pointer to the cell pushed.
+ * rkWrenchListPop() returns a pointer to the cell poped.
+ * rkWrenchListDestroy() returns no value.
  */
 #define rkWrenchListPush(l,w)  zListInsertTail( l, w )
 __EXPORT rkWrench *rkWrenchListPop(rkWrenchList *wl);
 #define rkWrenchListDestroy(l) zListDestroy( rkWrench, l )
 
-/* METHOD:
- * - convert wrench list to a net wrench.
+/*! \brief convert wrench list to a net wrench.
  *
- * 'rkWrenchToForce6D()' converts the properties
- * of the force list cell 'cell', a 6D force acting at
- * a certain point, to the equivalent 6D force vector
- * 'force' acting at the original point.
- * #
- * 'rkWrenchListToForce6D()' converts 'list' to the resultant
- * 6D force 'force' acting at the original point.
- * [RETURN VALUE]
- * 'rkWrenchToForce6D()' and 'rkWrenchListToForce6D()'
- * return a pointer to 'force'.
+ * rkWrenchToForce6D() converts the properties of the force list
+ * cell \a cell, a 6D force acting at a certain point, to the
+ * equivalent 6D force vector \a force acting at the original point.
+ *
+ * rkWrenchListToForce6D() converts \a list to the resultant 6D
+ * force \a force acting at the original point.
+ * \retval
+ * rkWrenchToForce6D() and rkWrenchListToForce6D() return a
+ * pointer to \a force.
  */
 __EXPORT zVec6D *rkWrenchXfer(rkWrench *cell, zVec6D *w);
 __EXPORT zVec6D *rkWrenchListNet(rkWrenchList *list, zVec6D *w);
 
-/* METHOD:
- * rkWrenchFWrite, rkWrenchWrite
- * - output wrench.
+/*! \brief output wrench.
  *
- * 'rkWrenchFWrite()' writes out the properties
- * of the force list cell 'cell' to the current position
- * in the file 'fp' in the following format.
- * #
+ * rkWrenchFWrite() writes out the properties of the force list cell
+ * \a cell to the current position in the file \a fp in the following
+ * format.
+ *
  *  force: { <x>, <y>, <z> }
  *  moment: { <x>, <y>, <z> }
  *  point of action: { <x>, <y>, <z> }
- * #
- * 'rkWrenchWrite()' writes out the properties of
- * 'cell' simply to the standard output.
- * [RETURN VALUE]
- * Neither 'rkWrenchFWrite()' nor 'rkWrenchWrite()'
- * returns any values.
+ *
+ * rkWrenchWrite() writes out the properties of \a cell to the
+ * standard output.
+ * \retval
+ * Neither rkWrenchFWrite() nor rkWrenchWrite() returns any values.
  */
 __EXPORT void rkWrenchFWrite(FILE *fp, rkWrench *cell);
 #define rkWrenchWrite(c) rkWrenchFWrite( stdout, (c) )

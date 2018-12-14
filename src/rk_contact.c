@@ -134,7 +134,7 @@ void rkContactInfoPoolDestroy(rkContactInfoPool *ci)
 
   if( !ci ) return;
   for( i=0; i<zArrayNum(ci); i++ )
-    rkContactInfoDestroy( zArrayElem(ci,i) );
+    rkContactInfoDestroy( zArrayElemNC(ci,i) );
   zArrayFree( ci );
 }
 
@@ -147,8 +147,8 @@ rkContactInfo *rkContactInfoPoolAssoc(rkContactInfoPool *ci, char *stf1, char *s
 
   if( !stf1 || !stf2) return NULL;
   for( i=0; i<zArrayNum(ci); i++ )
-    if( rkContactInfoAssoc( zArrayElem(ci,i), stf1, stf2 ) )
-      return zArrayElem(ci,i);
+    if( rkContactInfoAssoc( zArrayElemNC(ci,i), stf1, stf2 ) )
+      return zArrayElemNC(ci,i);
   return NULL;
 }
 
@@ -159,8 +159,8 @@ rkContactInfo *rkContactInfoPoolAssocType(rkContactInfoPool *ci, char *stf1, cha
   if( !stf1 || !stf2) return NULL;
 
   for( i=0; i<zArrayNum(ci); i++ )
-    if( rkContactInfoType( zArrayElem(ci,i) ) == type && rkContactInfoAssoc( zArrayElem(ci,i), stf1, stf2 ) )
-      return zArrayElem(ci,i);
+    if( rkContactInfoType( zArrayElemNC(ci,i) ) == type && rkContactInfoAssoc( zArrayElemNC(ci,i), stf1, stf2 ) )
+      return zArrayElemNC(ci,i);
   return NULL;
 }
 
@@ -184,11 +184,15 @@ typedef struct{
 bool _rkContactInfoPoolFRead(FILE *fp, void *instance, char *buf, bool *success)
 {
   _rkContactInfoPoolParam *prm;
+  rkContactInfo *ci;
 
   prm = instance;
+  ci = zArrayElemNC( prm->ci, prm->c++ );
   if( strcmp( buf, RK_CONTACTINFO_TAG ) == 0 )
-    if( !rkContactInfoFRead( fp, zArrayElem(prm->ci,prm->c++) ) )
+    if( !rkContactInfoFRead( fp, ci ) )
       return ( *success = false );
+  if( rkContactInfoPoolAssoc( prm->ci, ci->__stf[0], ci->__stf[1] ) != ci )
+    ZRUNWARN( "duplicate contact information with keys %s and %s", ci->__stf[0], ci->__stf[1] );
   return true;
 }
 
@@ -226,6 +230,6 @@ void rkContactInfoPoolFWrite(FILE *fp, rkContactInfoPool *ci)
 
   for( i=0; i<zArrayNum(ci); i++ ){
     fprintf( fp, "[%s]\n", RK_CONTACTINFO_TAG );
-    rkContactInfoFWrite( fp, zArrayElem(ci,i) );
+    rkContactInfoFWrite( fp, zArrayElemNC(ci,i) );
   }
 }

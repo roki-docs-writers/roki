@@ -174,7 +174,7 @@ double rkJointTorsionDisRevol(zFrame3D *dev, zVec6D *t)
     zVec3DClear( &aa ) : zVec3DMulDRC( &aa, angle/l );
   zMulMatTVec3D( zFrame3DAtt(dev), &aa, zVec6DAng(t) );
   /* intermediate attitude */
-  zMat3DAA( &rm, &aa );
+  zMat3DFromAA( &rm, &aa );
   /* joint displacement */
   return 0.5 *
     ( zVec3DAngle( &rm.v[zX], &zFrame3DAtt(dev)->v[zX], &rm.v[zZ] )

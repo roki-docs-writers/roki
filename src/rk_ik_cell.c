@@ -58,19 +58,19 @@ void rkIKRefSetPos(rkIKRef *ref, double x, double y, double z)
 
 void rkIKRefSetZYX(rkIKRef *ref, double azim, double elev, double tilt)
 { /* referential attitude by z-y-x Eulerian angle */
-  zMat3DZYX( &ref->att, azim, elev, tilt );
+  zMat3DFromZYX( &ref->att, azim, elev, tilt );
 }
 
 void rkIKRefSetZYZ(rkIKRef *ref, double heading, double pitch, double bank)
 { /* referential attitude by z-y-z Eulerian angle */
-  zMat3DZYZ( &ref->att, heading, pitch, bank );
+  zMat3DFromZYZ( &ref->att, heading, pitch, bank );
 }
 
 void rkIKRefSetAA(rkIKRef *ref, double x, double y, double z)
 { /* referential attitude by angle-axis vector */
   zVec3D aa;
 
-  zMat3DAA( &ref->att, zVec3DCreate( &aa, x, y, z ) );
+  zMat3DFromAA( &ref->att, zVec3DCreate( &aa, x, y, z ) );
 }
 
 /* Jacobian matrix */

@@ -52,7 +52,7 @@ void _rkJointLimDisBrFloat(void *prp, double *testval, double *limval){
 /* joint displacement set function */
 void _rkJointSetDisBrFloat(void *prp, double *val){
   _rkJointLimDisBrFloat( prp, val, _rkc(prp)->dis.e );
-  zMat3DAA( &_rkc(prp)->_att, zVec6DAng(&_rkc(prp)->dis) );
+  zMat3DFromAA( &_rkc(prp)->_att, zVec6DAng(&_rkc(prp)->dis) );
 }
 
 void _rkJointSetVelBrFloat(void *prp, double *val){
@@ -108,8 +108,8 @@ void _rkJointSubDisBrFloat(void *prp, double *dis, double *sdis)
 
   zVec3DSubDRC( zVec6DLin((zVec6D*)dis), zVec6DLin((zVec6D*)sdis) );
   zVec3DCopy( zVec6DAng((zVec6D*)dis), &aa );
-  zMat3DAA( &m, &aa );
-  zMat3DAA( &ms, zVec6DAng((zVec6D*)sdis) );
+  zMat3DFromAA( &m, &aa );
+  zMat3DFromAA( &ms, zVec6DAng((zVec6D*)sdis) );
   zMat3DError( &m, &ms, zVec6DAng((zVec6D*)dis) );
 }
 

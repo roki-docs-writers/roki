@@ -1,10 +1,13 @@
 #include <roki/rk_force.h>
 
-int main(void)
+#define N
+
+void assert_wrenchlist(void)
 {
   rkWrenchList wl;
-  rkWrench w[4], *wp;
-  zVec6D w6, rw;
+  rkWrench w[4];
+  zVec6D rw;
+  zVec6D netw = { { 0, 0, 0, 0, 0, 4 } };
 
   zListInit( &wl );
   zVec6DCreate( rkWrenchW(&w[0]),-1, 0, 0, 0, 0, 0 );
@@ -22,21 +25,11 @@ int main(void)
   zListInsertTail( &wl, &w[3] );
 
   rkWrenchListNet( &wl, &rw );
-  printf( "<net wrench>\n" );
-  zVec6DWrite( &rw );
-  zEndl();
+  zAssert( rkWrenchListNet, zVec6DEqual( &rw, &netw ) );
+}
 
-  zVec6DClear( &rw );
-  while( !zListIsEmpty( &wl ) ){
-    zListDeleteTail( &wl, &wp );
-    printf( "<force1 :%p>\n", wp );
-    rkWrenchWrite( wp );
-    rkWrenchXfer( wp, &w6 );
-    printf( "(equivalent wrench)\n" );
-    zVec6DWrite( &w6 );
-    zVec6DAddDRC( &rw, &w6 );
-  }
-  zEndl();
-  zVec6DWrite( &rw );
-  return 0;
+int main(void)
+{
+  assert_wrenchlist();
+  return EXIT_SUCCESS;
 }

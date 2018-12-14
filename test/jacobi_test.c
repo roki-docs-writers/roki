@@ -4,6 +4,21 @@
 #define TIP 4
 #define ANO 7
 
+void link_mp_rand(rkLink *l)
+{
+  double i11, i12, i13, i22, i23, i33;
+
+  rkLinkSetMass( l, zRandF(0.1,1.0) );
+  zVec3DCreate( rkLinkCOM(l), zRandF(-1,1), zRandF(-1,1), zRandF(-1,1) );
+  i11 = zRandF(0.01,0.1);
+  i12 =-zRandF(0.0001,0.001);
+  i13 =-zRandF(0.0001,0.001);
+  i22 = zRandF(0.01,0.1);
+  i23 =-zRandF(0.00001,0.0001);
+  i33 = zRandF(0.01,0.1);
+  zMat3DCreate( rkLinkInertia(l), i11, i12, i13, i12, i22, i23, i13, i23, i33 );
+}
+
 void chain_init(rkChain *chain)
 {
   register int i;
@@ -15,11 +30,12 @@ void chain_init(rkChain *chain)
   for( i=0; i<N; i++ ){
     sprintf( name, "link#%02d", i );
     rkLinkInit( rkChainLink(chain,i) );
-    zVec3DCreate( rkChainLinkCOM(chain,i), zRandF(-1,1), zRandF(-1,1), zRandF(-1,1) );
-    zNameSet( rkChainLink(chain,i), name );
+    link_mp_rand( rkChainLink(chain,i) );
+    rkChainMass( chain ) += rkChainLinkMass( chain, i );
     zVec3DCreate( &aa, zRandF(-1,1), zRandF(-1,1), zRandF(-1,1) );
     zVec3DCreate( rkChainLinkOrgPos(chain,i), zRandF(-1,1), zRandF(-1,1), zRandF(-1,1) );
-    zMat3DAA( rkChainLinkOrgAtt(chain,i), &aa );
+    zMat3DFromAA( rkChainLinkOrgAtt(chain,i), &aa );
+    zNameSet( rkChainLink(chain,i), name );
   }
   rkLinkAddChild( rkChainLink(chain,0), rkChainLink(chain,1) );
   rkLinkAddChild( rkChainLink(chain,1), rkChainLink(chain,2) );
@@ -38,28 +54,24 @@ void chain_init(rkChain *chain)
   rkJointCreate( rkChainLinkJoint(chain,7), RK_JOINT_FIXED );
 
   rkChainSetOffset( chain );
-  rkChainSetMass( chain, 1.0 ); /* dummy */
   rkChainUpdateFK( chain );
   rkChainUpdateID( chain );
 }
 
 void world_ang_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
-  eprintf( "World (angular) test\n" );
   rkChainLinkWldAngJacobi( chain, TIP, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkAngVel(chain,TIP), v );
 }
 
 void world_lin_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
-  eprintf( "World (linear) test\n" );
   rkChainLinkWldLinJacobi( chain, TIP, ZVEC3DZERO, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkLinVel(chain,TIP), v );
 }
 
 void world_com_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
-  eprintf( "World (COM) test\n" );
   rkChainLinkWldLinJacobi( chain, TIP, rkChainLinkCOM(chain,TIP), jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkCOMVel(chain,TIP), v );
 }
@@ -68,7 +80,6 @@ void l2l_ang_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
   zVec3D av;
 
-  eprintf( "Link->Link (angular) test\n" );
   rkChainLinkToLinkAngJacobi( chain, ANO, TIP, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkAngVel(chain,TIP), v );
   zMulMatVec3D( rkChainLinkWldAtt(chain,ANO), rkChainLinkAngVel(chain,ANO), &av );
@@ -79,7 +90,6 @@ void l2l_lin_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
   zVec3D av, vr, tmp;
 
-  eprintf( "Link->Link (linear) test\n" );
   rkChainLinkToLinkLinJacobi( chain, ANO, TIP, ZVEC3DZERO, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkLinVel(chain,TIP), v );
   zMulMatVec3D( rkChainLinkWldAtt(chain,ANO), rkChainLinkLinVel(chain,ANO), &av );
@@ -91,27 +101,44 @@ void l2l_lin_test(rkChain *chain, zMat jacobi, zVec3D *v)
   zVec3DSubDRC( v, &tmp );
 }
 
-void (*testfunc[])(rkChain*,zMat,zVec3D*) = {
-  world_ang_test,
-  world_lin_test,
-  world_com_test,
-  l2l_ang_test,
-  l2l_lin_test,
-  NULL,
-};
+void com_test(rkChain *chain, zMat jacobi, zVec3D *v)
+{
+  rkChainCOMJacobi( chain, jacobi );
+  zVec3DCopy( rkChainCOMVel(chain), v );
+}
+
+void link_am_test(rkChain *chain, zMat jacobi, zVec3D *v)
+{
+  zVec3D tp;
+
+  rkChainLinkAMJacobi( chain, TIP, ZVEC3DZERO, jacobi );
+  zXfer3DInv( rkChainLinkWldFrame(chain,TIP), ZVEC3DZERO, &tp );
+  rkLinkAM( rkChainLink(chain,TIP), &tp, v );
+  zMulMatVec3DDRC( rkChainLinkWldAtt(chain,TIP), v );
+}
+
+void am_test(rkChain *chain, zMat jacobi, zVec3D *v)
+{
+  rkChainAMJacobi( chain, ZVEC3DZERO, jacobi );
+  rkChainAM( chain, ZVEC3DZERO, v );
+}
+
+bool assert_jacobi(rkChain *chain, zMat jacobi, zVec dis, zVec vel, zVec acc, zVec ev, void (*test_f)(rkChain*,zMat,zVec3D*))
+{
+  zVec3D v, err;
+
+  test_f( chain, jacobi, &v );
+  zMulMatVec( jacobi, vel, ev );
+  zVec3DSub( (zVec3D*)zVecBuf(ev), &v, &err );
+  return zVec3DIsTiny( &err );
+}
 
 int main(int argc, char *argv[])
 {
   rkChain chain;
   zVec dis, vel, acc, ev;
   zMat jacobi;
-  zVec3D v, err;
-  void (*test)(rkChain*,zMat,zVec3D*);
 
-  if( !( test = testfunc[argc>1 ? atoi(argv[1]) : 0] ) ){
-    ZRUNERROR( "invalid test indicator: %d", atoi(argv[1]) );
-    return EXIT_FAILURE;
-  }
   /* initialization */
   zRandInit();
   chain_init( &chain );
@@ -125,14 +152,15 @@ int main(int argc, char *argv[])
   zVecRandUniform( vel, -10.0, 10.0 );
   rkChainFK( &chain, dis );
   rkChainID( &chain, vel, acc );
-zFrame3DWrite(rkChainLinkWldFrame(&chain,TIP));
-  test( &chain, jacobi, &v );
-  zMulMatVec( jacobi, vel, ev );
-  zVec3DSub( (zVec3D*)zVecBuf(ev), &v, &err );
-  zVec3DWrite( (zVec3D*)zVecBuf(ev) );
-  zVec3DWrite( &v );
-  zVec3DWrite( &err );
-  printf( " ... %s.\n", zVec3DIsTiny( &err ) ? "OK" : "BUG probably in Jacobian matrix computation" );
+
+  zAssert( rkChainLinkWldAngJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, world_ang_test ) );
+  zAssert( rkChainLinkWldLinJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, world_lin_test ) );
+  zAssert( rkChainLinkWldLinJacobi(COM), assert_jacobi( &chain, jacobi, dis, vel, acc, ev, world_com_test ) );
+  zAssert( rkChainLinkToLinkAngJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, l2l_ang_test ) );
+  zAssert( rkChainLinkToLinkLinJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, l2l_lin_test ) );
+  zAssert( rkChainCOMJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, com_test ) );
+  zAssert( rkChainLinkAMJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, link_am_test ) );
+  zAssert( rkChainAMJacobi, assert_jacobi( &chain, jacobi, dis, vel, acc, ev, am_test ) );
 
   /* termination */
   zVecFree( dis );
@@ -141,5 +169,5 @@ zFrame3DWrite(rkChainLinkWldFrame(&chain,TIP));
   zVecFree( ev );
   zMatFree( jacobi );
   rkChainDestroy( &chain );
-  return 0;
+  return EXIT_SUCCESS;
 }

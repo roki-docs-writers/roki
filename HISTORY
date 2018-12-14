@@ -1,3 +1,13 @@
+2018.12.12. Followed renaming of CURE to ZEDA. [all]
+2018.10.31. Reimplemented _rkLinkABIInitInertia. [rk_abi]
+2018.10.31. Modified _rkCDBREPMergeCH to replace zVec3DList to zVec3DAddrList. [rk_cd]
+2018.10.31. Modified rkChain2VertList to conform to the new specification of zVec3DList. [rk_chain]
+2018.10.31. Reflected modified name of zMat3DFromAA in _rkJointSetDisSpher, _rkJointSubDisSpher, _rkJointSetDisFloat, _rkJointSubDisFloat, _rkJointSetDisBrFloat and _rkJointSubDisBrFloat. [rk_joint_spher, rk_joint_float, rk_joint_brfloat]
+2018.10.31. Reflected modified name of zMat3DFromZYXSC in _rkJointXferHooke. [rk_joint_hooke]
+2018.10.31. Reflected modified name of zMat3DFromZYX in rkIKRefSetZYX, zMat3DFromZYZ in rkIKRefSetZYZ, and zMat3DFromAA in rkIKRefSetAA. [rk_ik_cell]
+2018.10.30. Reflected modified specification of zMat3DDyad in _rkJointABIAddAbi* . [rk_joint_revol, rk_joint_prism, rk_joint_cylin]
+2018.10.30. Applied zArrayElemNC. [rk_contact]
+2018.10.30. Created automatic testing system. [test]
 2018. 7. 9. Separated rkFD to RoKi-FD. (by Naoki Wakisaka)
 2018. 7. 9. Added breakable floating joint. [rk_joint_brfloat] (by Naoki Wakisaka)
 2015. 7.14. Modified rkFD to compute contact forces based on volumetric contact model by Naoki Wakisaka. [rk_fd]

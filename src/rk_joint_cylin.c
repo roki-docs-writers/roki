@@ -374,15 +374,15 @@ void _rkJointABIAddAbiCylin(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *p
   zMat6DRow( m, zZA, &v61 );
 
   zVec6DMul( &v13, zMatElem(h,0,0), &tmpv );
-  zMat6DDyad( &tmpv, &v31, &tmpm );
+  zMat6DDyad( &tmpm, &tmpv, &v31 );
   zVec6DMul( &v13, zMatElem(h,0,1), &tmpv );
-  zMat6DDyad( &tmpv, &v61, &tmpm2 );
+  zMat6DDyad( &tmpm2, &tmpv, &v61 );
   zMat6DAddDRC( &tmpm, &tmpm2 );
   zVec6DMul( &v16, zMatElem(h,1,0), &tmpv );
-  zMat6DDyad( &tmpv, &v31, &tmpm2 );
+  zMat6DDyad( &tmpm2, &tmpv, &v31 );
   zMat6DAddDRC( &tmpm, &tmpm2 );
   zVec6DMul( &v16, zMatElem(h,1,1), &tmpv );
-  zMat6DDyad( &tmpv, &v61, &tmpm2 );
+  zMat6DDyad( &tmpm2, &tmpv, &v61 );
   zMat6DAddDRC( &tmpm, &tmpm2 );
 
   rkJointXferMat6D( f, &tmpm, &tmpm );
