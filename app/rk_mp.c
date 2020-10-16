@@ -61,7 +61,7 @@ bool rk_mpCommandArgs(int argc, char *argv[])
     return 1;
   if( option[RK_MP_VFILE].flag )
     if( !rk_mpInitFK( &chain ) ) return 1;
-  zStrListDestroy( &arglist );
+  zStrListDestroy( &arglist, false );
   return true;
 }
 

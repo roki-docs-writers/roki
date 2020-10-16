@@ -73,7 +73,7 @@ FILE *rk_ik_command_args(int argc, char *argv[])
     ZOPENERROR( option[RK_IK_OUTPUTFILE].arg );
     exit( 1 );
   }
-  zStrListDestroy( &arglist );
+  zStrListDestroy( &arglist, false );
   return fout;
 }
 

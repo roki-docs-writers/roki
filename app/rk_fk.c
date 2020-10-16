@@ -102,7 +102,7 @@ FILE *rk_fkCommandArgs(int argc, char *argv[])
     ZOPENERROR( option[RK_FK_INITFILE].arg );
     return NULL;
   }
-  zStrListDestroy( &arglist );
+  zStrListDestroy( &arglist, false );
   return fp;
 }
 

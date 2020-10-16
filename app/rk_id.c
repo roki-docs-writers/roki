@@ -102,7 +102,7 @@ bool rk_idCommandArgs(int argc, char *argv[])
     ZOPENERROR( option[RK_ID_INITFILE].arg );
     return false;
   }
-  zStrListDestroy( &arglist );
+  zStrListDestroy( &arglist, false );
   return true;
 }
 
