@@ -15,8 +15,8 @@ type : box
 name : shape
 optic : blue
 center : 0, 0, -0.2
-depth : 2.0
-width : 2.0
+depth : 5.0
+width : 5.0
 height : 0.4
 
 [link]

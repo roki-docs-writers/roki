@@ -23,7 +23,8 @@ static void _rkJointSubDisHooke(void *prp, double *dis, double *sdis);
 static void _rkJointSetDisCNTHooke(void *prp, double *val, double dt);
 
 static zFrame3D *_rkJointXferHooke(void *prp, zFrame3D *fo, zFrame3D *f);
-static void _rkJointIncVelHooke(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc);
+static void _rkJointIncVelHooke(void *prp, zVec6D *vel);
+static void _rkJointIncAccOnVelHooke(void *prp, zVec3D *w, zVec6D *acc);
 static void _rkJointIncAccHooke(void *prp, zVec6D *acc);
 
 static void _rkJointCalcTrqHooke(void *prp, zVec6D *f);
@@ -142,20 +143,25 @@ zFrame3D *_rkJointXferHooke(void *prp, zFrame3D *fo, zFrame3D *f)
 }
 
 /* joint motion rate transfer function */
-void _rkJointIncVelHooke(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc)
+void _rkJointIncVelHooke(void *prp, zVec6D *vel)
 {
-  rkJointPrpHooke *p;
-  zVec3D v1, v2;
+  zVec3D v;
+
+  zVec3DCreate( &v, -_rkc(prp)->_s[1]*_rkc(prp)->vel[0], _rkc(prp)->vel[1], _rkc(prp)->_c[1]*_rkc(prp)->vel[0] );
+  zVec3DAddDRC( zVec6DAng(vel), &v );
+}
+
+void _rkJointIncAccOnVelHooke(void *prp, zVec3D *w, zVec6D *acc)
+{
+  zVec3D v;
   double dq2;
 
-  p = prp;
-  zVec3DCreate( &v1, -p->_s[1]*p->vel[0], p->vel[1], p->_c[1]*p->vel[0] );
-  zVec3DOuterProd( w, &v1, &v2 );
-  zVec3DAddDRC( zVec6DAng(vel), &v1 );
-  zVec3DAddDRC( zVec6DAng(acc), &v2 );
-  dq2 = p->vel[0] * p->vel[1];
-  zVec3DCreate( &v1, -p->_c[1]*dq2, 0, -p->_s[1]*dq2 );
-  zVec3DAddDRC( zVec6DAng(acc), &v1 );
+  zVec3DCreate( &v, -_rkc(prp)->_s[1]*_rkc(prp)->vel[0], _rkc(prp)->vel[1], _rkc(prp)->_c[1]*_rkc(prp)->vel[0] );
+  zVec3DOuterProd( w, &v, &v );
+  zVec3DAddDRC( zVec6DAng(acc), &v );
+  dq2 = _rkc(prp)->vel[0] * _rkc(prp)->vel[1];
+  zVec3DCreate( &v, -_rkc(prp)->_c[1]*dq2, 0, -_rkc(prp)->_s[1]*dq2 );
+  zVec3DAddDRC( zVec6DAng(acc), &v );
 }
 
 void _rkJointIncAccHooke(void *prp, zVec6D *acc)
@@ -314,7 +320,6 @@ static zVec3D* (*_rk_joint_axis_hooke_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_hooke = {
-  2,
   _rkJointLimDisHooke,
   _rkJointSetDisHooke,
   _rkJointSetVelHooke,
@@ -330,6 +335,7 @@ static rkJointCom rk_joint_hooke = {
   _rkJointSetDisCNTHooke,
   _rkJointXferHooke,
   _rkJointIncVelHooke,
+  _rkJointIncAccOnVelHooke,
   _rkJointIncAccHooke,
   _rkJointCalcTrqHooke,
   _rkJointTorsionHooke,
@@ -360,15 +366,19 @@ void _rkJointMotorSetInputHooke(void *prp, double *val){
   rkMotorSetInput( &_rkc(prp)->m, val );
 }
 void _rkJointMotorInertiaHooke(void *prp, double *val){
+  zRawVecClear( val, 4 );
   rkMotorInertia( &_rkc(prp)->m, val );
 }
 void _rkJointMotorInputTrqHooke(void *prp, double *val){
+  zRawVecClear( val, 2 );
   rkMotorInputTrq( &_rkc(prp)->m, val );
 }
 void _rkJointMotorResistanceHooke(void *prp, double *val){
+  zRawVecClear( val, 2 );
   rkMotorRegistance( &_rkc(prp)->m, _rkc(prp)->dis, _rkc(prp)->vel, val );
 }
 void _rkJointMotorDrivingTrqHooke(void *prp, double *val){
+  zRawVecClear( val, 2 );
   rkMotorDrivingTrq( &_rkc(prp)->m, _rkc(prp)->dis, _rkc(prp)->vel, _rkc(prp)->acc, val );
 }
 
@@ -382,35 +392,59 @@ static rkJointMotorCom rk_joint_motor_hooke = {
 };
 
 /* ABI */
-static void _rkJointABIAxisInertiaHooke(void *prp, zMat6D *m, zMat h);
-static void _rkJointABIAddAbiBiosHooke(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb);
-static void _rkJointABIQAccHooke(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
+static void _rkJointABIAxisInertiaHooke(void *prp, zMat6D *m, zMat h, zMat ih);
+static void _rkJointABIAddAbiHooke(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm);
+static void _rkJointABIAddBiasHooke(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb);
+static void _rkJointABIDrivingTorqueHooke(void *prp);
+static void _rkJointABIQAccHooke(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
 
-void _rkJointABIAxisInertiaHooke(void *prp, zMat6D *m, zMat h)
+void _rkJointABIAxisInertiaHooke(void *prp, zMat6D *m, zMat h, zMat ih)
 {
   rkJointPrpHooke *p;
   zMat3D *m22;
 
+  _rkJointMotorInertiaHooke( prp, zMatBuf(h) );
   p = prp;
   m22 = zMat6DMat3D(m, 1, 1);
-  zMatElem(h,0,0) = m22->e[0][0]*p->_s[1]*p->_s[1] - (m22->e[2][0] + m22->e[0][2])*p->_s[1]*p->_c[1] + m22->e[2][2]*p->_c[1]*p->_c[1];
-  zMatElem(h,1,0) = m22->e[2][1]*p->_c[1] - m22->e[0][1]*p->_s[1];
-  zMatElem(h,0,1) = m22->e[1][2]*p->_c[1] - m22->e[1][0]*p->_s[1];
-  zMatElem(h,1,1) = m22->e[1][1];
+  zMatElem(h,0,0) += m22->e[0][0]*p->_s[1]*p->_s[1] - (m22->e[2][0] + m22->e[0][2])*p->_s[1]*p->_c[1] + m22->e[2][2]*p->_c[1]*p->_c[1];
+  zMatElem(h,1,0) += m22->e[2][1]*p->_c[1] - m22->e[0][1]*p->_s[1];
+  zMatElem(h,0,1) += m22->e[1][2]*p->_c[1] - m22->e[1][0]*p->_s[1];
+  zMatElem(h,1,1) += m22->e[1][1];
+  zMatInv( h, ih );
 }
 
-void _rkJointABIAddAbiBiosHooke(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb)
+void _rkJointABIAddAbiHooke(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm)
 {
   eprintf("under construction error: abi update for hooke joint\n");
 }
 
-void _rkJointABIQAccHooke(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc){}
+void _rkJointABIAddBiasHooke(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb)
+{
+  eprintf("under construction error: abi update for hooke joint\n");
+}
+
+void _rkJointABIDrivingTorqueHooke(void *prp)
+{
+  eprintf("under construction error: abi update for hooke joint\n");
+}
+
+void _rkJointABIQAccHooke(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc){}
 
 static rkJointABICom rk_joint_abi_hooke = {
   _rkJointABIAxisInertiaHooke,
-  _rkJointABIAddAbiBiosHooke,
+  _rkJointABIAddAbiHooke,
+  _rkJointABIAddBiasHooke,
+  _rkJointABIDrivingTorqueHooke,
   _rkJointABIQAccHooke,
 };
+
+rkJoint *rkJointSetFuncHooke(rkJoint *j)
+{
+  j->com = &rk_joint_hooke;
+  j->mcom = &rk_joint_motor_hooke;
+  j->acom = &rk_joint_abi_hooke;
+  return j;
+}
 
 /* rkJointCreateHooke
  * - create universal joint instance.
@@ -424,10 +458,8 @@ rkJoint *rkJointCreateHooke(rkJoint *j)
   _rkc(j->prp)->max[1] = zPI;
   _rkc(j->prp)->min[1] =-zPI;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->com = &rk_joint_hooke;
-  j->mcom = &rk_joint_motor_hooke;
-  j->acom = &rk_joint_abi_hooke;
-  return j;
+  j->size = 2;
+  return rkJointSetFuncHooke( j );
 }
 
 #undef _rkc

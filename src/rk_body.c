@@ -224,17 +224,30 @@ zVec3D *rkBodyUpdateCOM(rkBody *body)
 /* rkBodyUpdateCOMRate
  * - update body COM rate with respect to the inertial frame.
  */
-void rkBodyUpdateCOMRate(rkBody *body)
+void rkBodyUpdateCOMVel(rkBody *body)
 {
-  zVec3D tmp;
+	zVec3D tmp;
 
-  /* COM velocity and acceleration */
+  /* COM velocity */
   zVec3DOuterProd( rkBodyAngVel(body), rkBodyCOM(body), &tmp ); /* w x p */
   zVec3DAdd( rkBodyLinVel(body), &tmp, rkBodyCOMVel(body) );
-  zVec3DOuterProd( rkBodyAngVel(body), &tmp, rkBodyCOMAcc(body) ); /* w x ( w x p ) */
+}
+
+void rkBodyUpdateCOMAcc(rkBody *body)
+{
+	zVec3D tmp;
+	/* COM acceleration */
+	zVec3DTripleProd( rkBodyAngVel(body), rkBodyAngVel(body), rkBodyCOM(body), rkBodyCOMAcc(body) ); /* w x ( w x p ) */
   zVec3DOuterProd( rkBodyAngAcc(body), rkBodyCOM(body), &tmp ); /* a x p */
   zVec3DAddDRC( rkBodyCOMAcc(body), &tmp );
   zVec3DAddDRC( rkBodyCOMAcc(body), rkBodyLinAcc(body) );
+}
+
+
+void rkBodyUpdateCOMRate(rkBody *body)
+{
+	rkBodyUpdateCOMVel( body );
+	rkBodyUpdateCOMAcc( body );
 }
 
 /* rkBodyNetWrench

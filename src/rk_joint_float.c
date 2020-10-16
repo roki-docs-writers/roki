@@ -21,8 +21,10 @@ static void _rkJointSubDisFloat(void *prp, double *dis, double *sdis);
 static void _rkJointSetDisCNTFloat(void *prp, double *val, double dt);
 
 static zFrame3D *_rkJointXferFloat(void *prp, zFrame3D *fo, zFrame3D *f);
-static void _rkJointIncVelFloat(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc);
+static void _rkJointIncVelFloat(void *prp, zVec6D *vel);
+static void _rkJointIncAccOnVelFloat(void *prp, zVec3D *w, zVec6D *acc);
 static void _rkJointIncAccFloat(void *prp, zVec6D *acc);
+
 static void _rkJointCalcTrqFloat(void *prp, zVec6D *f);
 static void _rkJointTorsionFloat(zFrame3D *dev, zVec6D *t, double dis[]);
 
@@ -139,13 +141,20 @@ zFrame3D *_rkJointXferFloat(void *prp, zFrame3D *fo, zFrame3D *f)
 }
 
 /* joint velocity transfer function */
-void _rkJointIncVelFloat(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc)
+void _rkJointIncVelFloat(void *prp, zVec6D *vel)
+{
+  zVec6D vl;
+
+  zMulMatTVec6D( &_rkc(prp)->_att, &_rkc(prp)->vel, &vl );
+  zVec6DAddDRC( vel, &vl );
+}
+
+void _rkJointIncAccOnVelFloat(void *prp, zVec3D *w, zVec6D *acc)
 {
   zVec6D vl;
   zVec3D tmp;
 
   zMulMatTVec6D( &_rkc(prp)->_att, &_rkc(prp)->vel, &vl );
-  zVec6DAddDRC( vel, &vl );
   zVec3DOuterProd( w, zVec6DLin(&vl), &tmp );
   zVec3DCatDRC( zVec6DLin(acc), 2, &tmp );
   zVec3DOuterProd( w, zVec6DAng(&vl), &tmp );
@@ -235,7 +244,6 @@ static zVec3D* (*_rk_joint_axis_float_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_float = {
-  6,
   _rkJointLimDisFloat,
   _rkJointSetDisFloat,
   _rkJointSetVelFloat,
@@ -251,6 +259,7 @@ static rkJointCom rk_joint_float = {
   _rkJointSetDisCNTFloat,
   _rkJointXferFloat,
   _rkJointIncVelFloat,
+  _rkJointIncAccOnVelFloat,
   _rkJointIncAccFloat,
   _rkJointCalcTrqFloat,
   _rkJointTorsionFloat,
@@ -276,10 +285,10 @@ static void _rkJointMotorDrivingTrqFloat(void *prp, double *val);
 
 byte _rkJointMotorFloat(void *prp){return RK_MOTOR_INVALID;}
 void _rkJointMotorSetInputFloat(void *prp, double *val){}
-void _rkJointMotorInertiaFloat(void *prp, double *val){}
-void _rkJointMotorInputTrqFloat(void *prp, double *val){}
-void _rkJointMotorResistanceFloat(void *prp, double *val){}
-void _rkJointMotorDrivingTrqFloat(void *prp, double *val){}
+void _rkJointMotorInertiaFloat(void *prp, double *val){ zMat6DClear( (zMat6D *)val ); }
+void _rkJointMotorInputTrqFloat(void *prp, double *val){ zVec6DClear( (zVec6D *)val ); }
+void _rkJointMotorResistanceFloat(void *prp, double *val){ zVec6DClear( (zVec6D *)val ); }
+void _rkJointMotorDrivingTrqFloat(void *prp, double *val){ zVec6DClear( (zVec6D *)val ); }
 
 static rkJointMotorCom rk_joint_motor_float = {
   _rkJointMotorFloat,
@@ -291,43 +300,59 @@ static rkJointMotorCom rk_joint_motor_float = {
 };
 
 /* ABI */
-static void _rkJointABIAxisInertiaFloat(void *prp, zMat6D *m, zMat h);
-static void _rkJointABIAddAbiBiosFloat(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb);
-static void _rkJointABIQAccFloat(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
+static void _rkJointABIAxisInertiaFloat(void *prp, zMat6D *m, zMat h, zMat ih);
+static void _rkJointABIAddAbiFloat(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm);
+static void _rkJointABIAddBiasFloat(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb);
+static void _rkJointABIDrivingTorqueFloat(void *prp);
+static void _rkJointABIQAccFloat(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
 
-void _rkJointABIAxisInertiaFloat(void *prp, zMat6D *m, zMat h){
+void _rkJointABIAxisInertiaFloat(void *prp, zMat6D *m, zMat h, zMat ih){
   register int i, j;
 
+  _rkJointMotorInertiaFloat( prp, zMatBuf(h) );
   for( i=0; i<3; i++ )
     for( j=0; j<3; j++ ){
-      zMatElem(h,i,  j)   = zMat6DMat3D(m,0,0)->e[j][i];
-      zMatElem(h,i+3,j)   = zMat6DMat3D(m,1,0)->e[j][i];
-      zMatElem(h,i,  j+3) = zMat6DMat3D(m,0,1)->e[j][i];
-      zMatElem(h,i+3,j+3) = zMat6DMat3D(m,1,1)->e[j][i];
+      zMatElem(h,i,  j)   += zMat6DMat3D(m,0,0)->e[j][i];
+      zMatElem(h,i+3,j)   += zMat6DMat3D(m,1,0)->e[j][i];
+      zMatElem(h,i,  j+3) += zMat6DMat3D(m,0,1)->e[j][i];
+      zMatElem(h,i+3,j+3) += zMat6DMat3D(m,1,1)->e[j][i];
     }
+  zMatInv( h, ih );
 }
-void _rkJointABIAddAbiBiosFloat(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb){}
-void _rkJointABIQAccFloat(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc)
+void _rkJointABIAddAbiFloat(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm){}
+void _rkJointABIAddBiasFloat(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb){}
+void _rkJointABIDrivingTorqueFloat(void *prp){}
+void _rkJointABIQAccFloat(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc)
 {
-  zVec6D tempv, tempv2;
+  zVec6D tmpv, tmpv2;
   register int i;
 
   /* acc */
-  zVec6DRev(b, &tempv2);
+  zVec6DRev(b, &tmpv2);
   for(i=zX;i<=zZA;i++)
-    tempv.e[i] = zVec6DInnerProd( (zVec6D *)&zMatElem(h,i,0), &tempv2 );
-  zVec6DCopy( &tempv, acc );
+    tmpv.e[i] = zVec6DInnerProd( (zVec6D *)&zMatElem(h,i,0), &tmpv2 );
+  zVec6DCopy( &tmpv, acc );
 
   /* q */
-  zVec6DSubDRC(&tempv, jac);
-  zMulMatVec6D(R, &tempv, &_rkc(prp)->acc);
+  zVec6DSubDRC(&tmpv, jac);
+  zMulMatVec6D(r, &tmpv, &_rkc(prp)->acc);
 }
 
 static rkJointABICom rk_joint_abi_float = {
   _rkJointABIAxisInertiaFloat,
-  _rkJointABIAddAbiBiosFloat,
+  _rkJointABIAddAbiFloat,
+  _rkJointABIAddBiasFloat,
+  _rkJointABIDrivingTorqueFloat,
   _rkJointABIQAccFloat,
 };
+
+rkJoint *rkJointSetFuncFloat(rkJoint *j)
+{
+  j->com = &rk_joint_float;
+  j->mcom = &rk_joint_motor_float;
+  j->acom = &rk_joint_abi_float;
+  return j;
+}
 
 /* rkJointCreateFloat
  * - create free-floating joint instance.
@@ -336,10 +361,8 @@ rkJoint *rkJointCreateFloat(rkJoint *j)
 {
   if( !( j->prp = zAlloc( rkJointPrpFloat, 1 ) ) )
     return NULL;
-  j->com = &rk_joint_float;
-  j->mcom = &rk_joint_motor_float;
-  j->acom = &rk_joint_abi_float;
-  return j;
+  j->size = 6;
+  return rkJointSetFuncFloat( j );
 }
 
 #undef _rkc

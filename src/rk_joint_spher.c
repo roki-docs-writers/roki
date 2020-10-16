@@ -21,8 +21,10 @@ static void _rkJointSubDisSpher(void *prp, double *dis, double *sdis);
 static void _rkJointSetDisCNTSpher(void *prp, double *val, double dt);
 
 static zFrame3D *_rkJointXferSpher(void *prp, zFrame3D *fo, zFrame3D *f);
-static void _rkJointIncVelSpher(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc);
+static void _rkJointIncVelSpher(void *prp, zVec6D *vel);
+static void _rkJointIncAccOnVelSpher(void *prp, zVec3D *w, zVec6D *acc);
 static void _rkJointIncAccSpher(void *prp, zVec6D *acc);
+
 static void _rkJointCalcTrqSpher(void *prp, zVec6D *f);
 static void _rkJointTorsionSpher(zFrame3D *dev, zVec6D *t, double dis[]);
 static void _rkJointValSpher(void *prp, double *val);
@@ -129,14 +131,21 @@ zFrame3D *_rkJointXferSpher(void *prp, zFrame3D *fo, zFrame3D *f)
 }
 
 /* joint velocity transfer function */
-void _rkJointIncVelSpher(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc)
+void _rkJointIncVelSpher(void *prp, zVec6D *vel)
 {
-  zVec3D ww, cw;
+  zVec3D cw;
 
   zMulMatTVec3D( &_rkc(prp)->_att, &_rkc(prp)->vel, &cw );
   zVec3DAddDRC( zVec6DAng(vel), &cw );
-  zVec3DOuterProd( w, &cw, &ww );
-  zVec3DAddDRC( zVec6DAng(acc), &ww );
+}
+
+void _rkJointIncAccOnVelSpher(void *prp, zVec3D *w, zVec6D *acc)
+{
+  zVec3D cw;
+
+  zMulMatTVec3D( &_rkc(prp)->_att, &_rkc(prp)->vel, &cw );
+  zVec3DOuterProd( w, &cw, &cw );
+  zVec3DAddDRC( zVec6DAng(acc), &cw );
 }
 
 /* joint acceleration transfer function */
@@ -231,7 +240,6 @@ static zVec3D* (*_rk_joint_axis_spher_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_spher = {
-  3,
   _rkJointLimDisSpher,
   _rkJointSetDisSpher,
   _rkJointSetVelSpher,
@@ -247,6 +255,7 @@ static rkJointCom rk_joint_spher = {
   _rkJointSetDisCNTSpher,
   _rkJointXferSpher,
   _rkJointIncVelSpher,
+  _rkJointIncAccOnVelSpher,
   _rkJointIncAccSpher,
   _rkJointCalcTrqSpher,
   _rkJointTorsionSpher,
@@ -277,15 +286,19 @@ void _rkJointMotorSetInputSpher(void *prp, double *val){
   rkMotorSetInput( &_rkc(prp)->m, val );
 }
 void _rkJointMotorInertiaSpher(void *prp, double *val){
+  zMat3DClear( (zMat3D *)val );
   rkMotorInertia( &_rkc(prp)->m, val );
 }
 void _rkJointMotorInputTrqSpher(void *prp, double *val){
+  zVec3DClear( (zVec3D *)val );
   rkMotorInputTrq( &_rkc(prp)->m, val );
 }
 void _rkJointMotorResistanceSpher(void *prp, double *val){
+  zVec3DClear( (zVec3D *)val );
   rkMotorRegistance( &_rkc(prp)->m, &_rkc(prp)->aa.e[zX], &_rkc(prp)->vel.e[zX], val );
 }
 void _rkJointMotorDrivingTrqSpher(void *prp, double *val){
+  zVec3DClear( (zVec3D *)val );
   rkMotorDrivingTrq( &_rkc(prp)->m, &_rkc(prp)->aa.e[zX], &_rkc(prp)->vel.e[zX], &_rkc(prp)->acc.e[zX], val );
 }
 
@@ -299,32 +312,57 @@ static rkJointMotorCom rk_joint_motor_spher = {
 };
 
 /* ABI */
-static void _rkJointABIAxisInertiaSpher(void *prp, zMat6D *m, zMat h);
-static void _rkJointABIAddAbiBiosSpher(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb);
-static void _rkJointABIQAccSpher(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
+static void _rkJointABIAxisInertiaSpher(void *prp, zMat6D *m, zMat h, zMat ih);
+static void _rkJointABIAddAbiSpher(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm);
+static void _rkJointABIAddBiasSpher(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb);
+static void _rkJointABIDrivingTorqueSpher(void *prp);
+static void _rkJointABIQAccSpher(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc);
 
-void _rkJointABIAxisInertiaSpher(void *prp, zMat6D *m, zMat h)
+void _rkJointABIAxisInertiaSpher(void *prp, zMat6D *m, zMat h, zMat ih)
 {
   /* The inertia matrix is multiplied by R from the left side and
      by R transpose from the right side in the mathematically strict
      way. A nice property is that they are cancelled in the following
      computation and thus are omitted from the beginning. */
+  _rkJointMotorInertiaSpher( prp, zMatBuf(h) );
   zMat3DT( zMat6DMat3D(m,1,1), (zMat3D *)&zMatElem(h,0,0) );
+  zMatInv( h, ih );
 }
 
-void _rkJointABIAddAbiBiosSpher(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb)
+void _rkJointABIAddAbiSpher(void *prp, zMat6D *m, zFrame3D *f, zMat h, zMat6D *pm)
 {
   eprintf("under construction error: abi update for spherical joint\n");
 }
-void _rkJointABIQAccSpher(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc)
+
+void _rkJointABIAddBiasSpher(void *prp, zMat6D *m, zVec6D *b, zFrame3D *f, zMat h, zVec6D *pb)
+{
+  eprintf("under construction error: abi update for spherical joint\n");
+}
+
+void _rkJointABIDrivingTorqueSpher(void *prp)
+{
+  eprintf("under construction error: abi update for spherical joint\n");
+}
+
+void _rkJointABIQAccSpher(void *prp, zMat3D *r, zMat6D *m, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc)
 {
 }
 
 static rkJointABICom rk_joint_abi_spher = {
   _rkJointABIAxisInertiaSpher,
-  _rkJointABIAddAbiBiosSpher,
+  _rkJointABIAddAbiSpher,
+  _rkJointABIAddBiasSpher,
+  _rkJointABIDrivingTorqueSpher,
   _rkJointABIQAccSpher,
 };
+
+rkJoint *rkJointSetFuncSpher(rkJoint *j)
+{
+  j->com = &rk_joint_spher;
+  j->mcom = &rk_joint_motor_spher;
+  j->acom = &rk_joint_abi_spher;
+  return j;
+}
 
 /* rkJointCreateSpher
  * - create spherical joint instance.
@@ -334,10 +372,8 @@ rkJoint *rkJointCreateSpher(rkJoint *j)
   if( !( j->prp = zAlloc( rkJointPrpSpher, 1 ) ) )
     return NULL;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->com = &rk_joint_spher;
-  j->mcom = &rk_joint_motor_spher;
-  j->acom = &rk_joint_abi_spher;
-  return j;
+  j->size = 3;
+  return rkJointSetFuncSpher( j );
 }
 
 #undef _rkc

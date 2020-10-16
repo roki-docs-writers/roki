@@ -20,26 +20,40 @@ __BEGIN_DECLS
 typedef struct{
   zMat6D m; /* mass matrix */
   zMat6D i; /* ABI matrix */
-  zVec6D b;
+  zVec6D f; /* bias force */
+  zVec6D b; /* ABbias force */
   zVec6D c;
-  zMat6D j;
+  rkWrenchList wlist; /* contact force list */
+  /* workspace */
+  zVec6D w;  /* net wrench except rigid contact forces */
+  zVec6D w0; /* net wrench except contact forces */
+  zVec6D b0; /* ABbios at no rigid contact forces */
+  zVec6D a0; /* link acc at no rigid contact forces */
+  bool abi_backward_path;
   /* joint inertia */
   zMat axi, iaxi;
 } rkABIPrp;
+
+typedef struct{
+  bool is_broken;
+  double ep_f;
+  double ep_t;
+} rkBreakPrp;
 
 typedef struct _rkLink{
   Z_NAMED_CLASS
   rkJoint joint;     /*!< \brief joint */
   rkBody body;       /*!< \brief rigid body */
   int offset;        /*!< \brief link identifier offset due to joint size */
-  zFrame3D orgframe; /*!< \brief original adjacent transformation */ 
-  zFrame3D adjframe; /*!< \brief adjacent transformation */ 
+  zFrame3D orgframe; /*!< \brief original adjacent transformation */
+  zFrame3D adjframe; /*!< \brief adjacent transformation */
   zVec6D wrench;     /*!< \brief joint wrench */
   struct _rkLink *parent; /*!< \brief a pointer to the parent link */
   struct _rkLink *child;  /*!< \brief a pointer to a child link */
   struct _rkLink *sibl;   /*!< \brief a pointer to a sibling link */
   /*! \cond */
   rkABIPrp _abiprp;  /* for ABI method */
+  rkBreakPrp *_bprp;
   void *_util;  /* for utility */
   /* additional property */
   /* 1: constraint list for inverse kinematics
@@ -89,6 +103,7 @@ typedef struct _rkLink{
 #define rkLinkChild(l)         (l)->child
 #define rkLinkSibl(l)          (l)->sibl
 #define rkLinkABIPrp(l)        ( &(l)->_abiprp )
+#define rkLinkBreakPrp(l)        ( (l)->_bprp )
 
 #define rkLinkSetOffset(l,o)   ( rkLinkOffset(l) = (o) )
 #define rkLinkSetMass(l,m)     rkBodySetMass( rkLinkBody(l), m )
@@ -232,6 +247,7 @@ __EXPORT rkLink *rkLinkAddChild(rkLink *l, rkLink *cl);
  * \a p is with respect to the local frame of \a l.
  */
 __EXPORT zVec3D *rkLinkPointVel(rkLink *l, zVec3D *p, zVec3D *v);
+__EXPORT zVec3D *rkLinkPointAcc(rkLink *l, zVec3D *p, zVec3D *a);
 
 /*! \brief compute inertia tensor of a link with respect to the inertial frame.
  *
@@ -300,6 +316,8 @@ __EXPORT zMat3D *rkLinkWldInertia(rkLink *l, zMat3D *i);
  * correct ways, considering the purpose of the computation.
  */
 __EXPORT void rkLinkUpdateFrame(rkLink *l, zFrame3D *pwf);
+__EXPORT void rkLinkUpdateVel(rkLink *l, zVec6D *pvel);
+__EXPORT void rkLinkUpdateAcc(rkLink *l, zVec6D *pvel, zVec6D *pacc);
 __EXPORT void rkLinkUpdateRate(rkLink *l, zVec6D *pvel, zVec6D *pacc);
 __EXPORT void rkLinkUpdateWrench(rkLink *l);
 

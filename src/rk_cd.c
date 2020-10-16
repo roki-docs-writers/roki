@@ -510,7 +510,7 @@ rkCDVert *_rkCDVertReg(rkCDPair *pair, rkCDVertList *vlist, rkCDCell *cell0, int
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[0], &v->data._axis[0] );
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[1], &v->data._axis[1] );
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[2], &v->data._axis[2] );
-    v->data.type = RK_CONTACT_STICK;
+    v->data.type = RK_CONTACT_SF;
   }
   zListInsertHead( vlist, v );
   return v;
@@ -666,6 +666,22 @@ zPH3D *_rkCDBREPMergeCH(zBREP *b1, zBREP *b2, zPH3D *ph)
   return ph;
 }
 
+bool _rkCDColVolError(zPH3D *ph)
+{
+  register int i, j;
+  int v[3];
+  for( i=0; i<zPH3DFaceNum(ph); i++ ){
+    for( j=0; j<3; j++ )
+      v[j] = (int)( zPH3DFaceVert(ph,i,j)-zPH3DVertBuf(ph) );
+    if( v[0] < 0 || v[0] > zPH3DVertNum(ph) ||
+        v[1] < 0 || v[1] > zPH3DVertNum(ph) ||
+        v[2] < 0 || v[2] > zPH3DVertNum(ph)){
+      return true;
+    }
+  }
+  return false;
+}
+
 void _rkCDColVolBREP(rkCD *cd)
 {
   rkCDPair *cp;
@@ -690,6 +706,14 @@ void _rkCDColVolBREP(rkCD *cd)
       _rkCDIntegrationNormBREP( &brep[0], &brep[1], &cp->data.norm );
       /* merge */
       _rkCDBREPMergeCH( &brep[0], &brep[1], &cp->data.colvol );
+      /* safety */
+      if( zArrayNum(&cp->data.colvol.vert) < 4 || zArrayNum(&cp->data.colvol.face) < 4 ||
+          _rkCDColVolError( &cp->data.colvol ) ){
+        cp->data.is_col = false;
+        cd->colnum--;
+        zPH3DDestroy( &cp->data.colvol );
+        goto CONTINUE;
+      }
       /* axis */
       zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
       zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
@@ -749,3 +773,6 @@ void rkCDColVolBREPFast(rkCD *cd)
   rkCDColChkOBB( cd );
   _rkCDColVolBREPFast( cd );
 }
+
+/* for fd */
+zListQuickSortDef( rkCDPlaneList, rkCDPlane )

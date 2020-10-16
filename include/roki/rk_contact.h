@@ -12,9 +12,9 @@
 __BEGIN_DECLS
 
 /* to be varied. */
-enum{ RK_CONTACT_RIGID, RK_CONTACT_ELASTIC };
+typedef enum{ RK_CONTACT_RIGID, RK_CONTACT_ELASTIC } rkContactType;
 
-typedef enum{ RK_CONTACT_STICK, RK_CONTACT_SLIP } rkContactType;
+typedef enum{ RK_CONTACT_UNCERTAIN, RK_CONTACT_SF, RK_CONTACT_KF } rkContactFricType;
 
 /* ********************************************************** */
 /* CLASS: rkContactInfo
@@ -23,7 +23,7 @@ typedef enum{ RK_CONTACT_STICK, RK_CONTACT_SLIP } rkContactType;
 
 typedef struct{
   char *__stf[2];        /* stuff binding keys */
-  char type;             /* contact type (elastic/rigid model) */
+  rkContactType type;             /* contact type (elastic/rigid model) */
   union{
     struct{
       double compensation; /* compensation coefficient */
@@ -162,6 +162,10 @@ __EXPORT void rkContactInfoPoolDestroy(rkContactInfoPool *ci);
  * set in \a ci matches the pair, the null pointer is returned.
  */
 __EXPORT rkContactInfo *rkContactInfoPoolAssoc(rkContactInfoPool *ci, char *stf1, char *stf2);
+
+/*! \brief associate contact information for a particular type to a pair of stuff.
+ */
+__EXPORT rkContactInfo *rkContactInfoPoolTypeAssoc(rkContactInfoPool *ci, char *stf1, char *stf2, char type);
 
 /*! \brief input/output of contact info pool.
  *

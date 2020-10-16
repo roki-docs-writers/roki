@@ -29,8 +29,10 @@ typedef struct{
 
   /* forward dynamics */
   rkJointRef _ref[2];
+  double _u[2];
 } rkJointPrpCylin;
 
+__EXPORT rkJoint *rkJointSetFuncCylin(rkJoint *joint);
 __EXPORT rkJoint *rkJointCreateCylin(rkJoint *joint);
 
 __END_DECLS

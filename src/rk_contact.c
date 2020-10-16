@@ -152,6 +152,18 @@ rkContactInfo *rkContactInfoPoolAssoc(rkContactInfoPool *ci, char *stf1, char *s
   return NULL;
 }
 
+rkContactInfo *rkContactInfoPoolAssocType(rkContactInfoPool *ci, char *stf1, char *stf2, char type)
+{
+  register int i;
+
+  if( !stf1 || !stf2) return NULL;
+
+  for( i=0; i<zArrayNum(ci); i++ )
+    if( rkContactInfoType( zArrayElem(ci,i) ) == type && rkContactInfoAssoc( zArrayElem(ci,i), stf1, stf2 ) )
+      return zArrayElem(ci,i);
+  return NULL;
+}
+
 bool rkContactInfoPoolReadFile(rkContactInfoPool *ci, char filename[])
 {
   FILE *fp;

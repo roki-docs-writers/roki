@@ -120,7 +120,8 @@ rkJoint *rkJointCopyState(rkJoint *src, rkJoint *dst)
  */
 void rkJointIncRate(rkJoint *j, zVec3D *w, zVec6D *vel, zVec6D *acc)
 {
-  rkJointIncVel( j, w, vel, acc );
+  rkJointIncVel( j, vel );
+  rkJointIncAccOnVel( j, w, acc );
   rkJointIncAcc( j, acc );
 }
 
@@ -166,4 +167,28 @@ double rkJointTorsionDisPrism(zFrame3D *dev, zVec6D *t)
   q = t->e[zZ];
   t->e[zZ] = 0;
   return q;
+}
+
+/* for ABI */
+zMat6D *rkJointXferMat6D(zFrame3D *f, zMat6D *i, zMat6D *m)
+{
+  zMat3D tmpm, tmpm2;
+
+  zMulMatMat3D( zFrame3DAtt( f ), zMat6DMat3D( i, 0, 0 ), zMat6DMat3D( m, 0, 0 ) );
+  zMulMatMatT3DDRC( zMat6DMat3D( m, 0, 0 ), zFrame3DAtt( f ) );
+  zMulMatMat3D( zFrame3DAtt( f ), zMat6DMat3D( i, 1, 0 ), zMat6DMat3D( m, 1, 0 ) );
+  zMulMatMatT3DDRC( zMat6DMat3D( m, 1, 0 ), zFrame3DAtt( f ) );
+  zMulMatMat3D( zFrame3DAtt( f ), zMat6DMat3D( i, 1, 1 ), zMat6DMat3D( m, 1, 1 ) );
+  zMulMatMatT3DDRC( zMat6DMat3D( m, 1, 1 ), zFrame3DAtt( f ) );
+
+  zMulVecOPMat3D( zFrame3DPos( f ), zMat6DMat3D( m, 0, 0 ), &tmpm );
+  zMat3DT( zMat6DMat3D( m, 1, 0 ), &tmpm2 );
+  zMat3DAddDRC( zMat6DMat3D( m, 1, 0 ), &tmpm );
+  zMat3DT( zMat6DMat3D( m, 1, 0 ), zMat6DMat3D( m, 0, 1 ) );
+  zMulVecOPMat3D( zFrame3DPos( f ), zMat6DMat3D( m, 0, 1 ), &tmpm );
+  zMat3DAddDRC( zMat6DMat3D( m, 1, 1 ), &tmpm );
+  zMulVecOPMat3D( zFrame3DPos( f ), &tmpm2, &tmpm );
+  zMat3DT( &tmpm, &tmpm );
+  zMat3DAddDRC( zMat6DMat3D( m, 1, 1 ), &tmpm );
+  return m;
 }

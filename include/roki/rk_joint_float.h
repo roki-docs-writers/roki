@@ -23,6 +23,7 @@ typedef struct{
   zMat3D _att; /* internal matrix */
 } rkJointPrpFloat;
 
+__EXPORT rkJoint *rkJointSetFuncFloat(rkJoint *joint);
 __EXPORT rkJoint *rkJointCreateFloat(rkJoint *joint);
 
 __END_DECLS

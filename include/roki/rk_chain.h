@@ -28,6 +28,9 @@ typedef struct{
   zVec3D wldcom;
   zVec3D wldcomvel;
   zVec3D wldcomacc;
+
+  /* for rkFD Class */
+  bool _col_flag;
 } rkChain;
 
 #define rkChainNum(c)              zArrayNum( &(c)->link )
@@ -246,6 +249,10 @@ __EXPORT void rkChainSetConf(rkChain *chain, zVec conf);
  */
 #define rkChainUpdateFrame(c)  \
   rkLinkUpdateFrame( rkChainRoot(c), ZFRAME3DIDENT )
+#define rkChainUpdateVel(c)   \
+  rkLinkUpdateVel( rkChainRoot(c), ZVEC6DZERO )
+#define rkChainUpdateAcc(c)   \
+  rkLinkUpdateAcc( rkChainRoot(c), ZVEC6DZERO, RK_GRAVITY6D )
 #define rkChainUpdateRate(c)   \
   rkLinkUpdateRate( rkChainRoot(c), ZVEC6DZERO, RK_GRAVITY6D )
 #define rkChainUpdateWrench(c) \

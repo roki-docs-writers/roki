@@ -16,6 +16,8 @@
 #define RK_FD_CDT_DEFAULT          0.002
 #define RK_FD_JOINT_COMP_K_DEFAULT 100
 #define RK_FD_JOINT_COMP_L_DEFAULT 0.01
+#define RK_FD_KINETIC_FRIC_WEIGHT_DEFAULT 100
+#define RK_FD_FRIC_PYRAMID_ORDER_DEFAULT 8
 
 #define rkChainUpdateRateGrav(c) \
   rkLinkUpdateRate( rkChainRoot(c), ZVEC6DZERO, ZVEC6DZERO )
@@ -35,6 +37,8 @@ rkFD *rkFDCreate(rkFD *fd)
   fd->acc = NULL;
   fd->_comp_k = RK_FD_JOINT_COMP_K_DEFAULT;
   fd->_comp_l = RK_FD_JOINT_COMP_L_DEFAULT;
+  fd->_kf_weight = RK_FD_KINETIC_FRIC_WEIGHT_DEFAULT;
+  fd->_pyramid = RK_FD_FRIC_PYRAMID_ORDER_DEFAULT;
   /* collision detector */
   rkCDCreate( &fd->cd );
   /* ODE solver */
@@ -77,36 +81,36 @@ bool _rkFDAllocJointState(rkFD *fd, rkFDCell *rlc)
   int js, rjs;
 
   if( fd->dis && fd->vel )
-    if(!(pdis = zVecClone( fd->dis )) || !(pvel = zVecClone( fd->vel )) )
+    if( !(pdis = zVecClone( fd->dis )) || !(pvel = zVecClone( fd->vel )) )
       goto ERROR;
 
   zVecFreeAO( 3, fd->dis, fd->vel, fd->acc );
 
   rjs = rkChainJointSize( &rlc->data.chain );
 
-  if(!( fd->dis = zVecAlloc( fd->size + rjs ) ) ||
-     !( fd->vel = zVecAlloc( fd->size + rjs ) ) ||
-     !( fd->acc = zVecAlloc( fd->size + rjs ) ) )
+  if( !( fd->dis = zVecAlloc( fd->size + rjs ) ) ||
+      !( fd->vel = zVecAlloc( fd->size + rjs ) ) ||
+      !( fd->acc = zVecAlloc( fd->size + rjs ) ) )
     goto ERROR;
 
   zListForEach( &fd->list, lc ){
     if( lc ==  rlc ) break;
     js = rkChainJointSize( &lc->data.chain );
-    if( pdis ) zRawVecCopy( &zVecElem( pdis, offset ), &zVecElem( fd->dis, offset ), js );
-    if( pvel ) zRawVecCopy( &zVecElem( pvel, offset ), &zVecElem( fd->vel, offset ), js );
+    if( pdis ) zRawVecCopy( &zVecElem(pdis,offset), &zVecElem(fd->dis,offset), js );
+    if( pvel ) zRawVecCopy( &zVecElem(pvel,offset), &zVecElem(fd->vel,offset), js );
     _rkFDCellDatSetOffset( fd, &lc->data, offset );
     offset += js;
   }
-  zRawVecClear( &zVecElem( fd->dis, offset ), rjs );
-  zRawVecClear( &zVecElem( fd->vel, offset ), rjs );
+  zRawVecClear( &zVecElem(fd->dis,offset), rjs );
+  zRawVecClear( &zVecElem(fd->vel,offset), rjs );
   zVecSetSize( &lc->data._dis, rjs );
   zVecSetSize( &lc->data._vel, rjs );
   _rkFDCellDatSetOffset( fd, &lc->data, offset );
   offset += rjs;
   for( lc=zListCellNext(lc); lc!=zListRoot(&fd->list); lc=zListCellNext(lc) ){
     js = rkChainJointSize( &lc->data.chain );
-    if( pdis ) zRawVecCopy( &zVecElem( pdis, offset ), &zVecElem( fd->dis, offset + rjs ), js );
-    if( pvel ) zRawVecCopy( &zVecElem( pvel, offset ), &zVecElem( fd->vel, offset + rjs ), js );
+    if( pdis ) zRawVecCopy( &zVecElem(pdis,offset), &zVecElem(fd->dis,offset+rjs), js );
+    if( pvel ) zRawVecCopy( &zVecElem(pvel,offset), &zVecElem(fd->vel,offset+rjs), js );
     _rkFDCellDatSetOffset( fd, &lc->data, offset + rjs );
     offset += js;
   }
@@ -118,16 +122,51 @@ bool _rkFDAllocJointState(rkFD *fd, rkFDCell *rlc)
   return false;
 }
 
+rkFDCellDat *_rkFDCellDatJointRefInit(rkFDCellDat *ld)
+{
+  register int i, j;
+  rkJoint *joint;
+  double val[6];
+  rkJointRef jref[6];
+
+  for( i=0; i<rkChainNum(&ld->chain); i++ ){
+    joint = rkChainLinkJoint(&ld->chain,i);
+    rkJointGetDis( joint, val );
+    for( j=0; j<rkJointSize(joint); j++ ){
+      jref[j].ref_dis = val[j];
+      jref[j].ref_trq = 0.0;
+      jref[j].type = RK_CONTACT_SF;
+    }
+    rkJointSetRef( joint, jref );
+  }
+  return ld;
+}
+
+/* for braking joint */
+void _rkFDChainSetBreakJointFuncFix(rkChain *chain)
+{
+  register int i;
+
+  for( i=0; i<rkChainNum(chain); i++ ){
+    if( rkLinkBreakPrp(rkChainLink(chain,i)) ){
+      rkJointSetFuncFix( rkChainLinkJoint(chain,i) );
+    }
+  }
+}
+
 rkFDCellDat *_rkFDCellDatInit(rkFDCellDat *ld)
 {
   rkChainABIInit( &ld->chain );
+  _rkFDChainSetBreakJointFuncFix( &ld->chain );
   ld->_dis.size = ld->_vel.size = ld->_acc.size = rkChainJointSize( &ld->chain );
   ld->_dis.elem = ld->_vel.elem = ld->_acc.elem = NULL;
+  _rkFDCellDatJointRefInit( ld );
   return ld;
 }
 
 rkFDCell *_rkFDCellPush(rkFD *fd, rkFDCell *lc)
 {
+  rkCDPair *cdp;
   _rkFDCellDatInit( &lc->data );
   zListInsertHead( &fd->list, lc );
   fd->size += rkChainJointSize( &lc->data.chain );
@@ -137,6 +176,15 @@ rkFDCell *_rkFDCellPush(rkFD *fd, rkFDCell *lc)
   }
   /* cd reg */
   rkCDChainReg( &fd->cd, &lc->data.chain, true );
+  /* set contact info */
+  zListForEach( &fd->cd.plist, cdp ){
+    if( cdp->data.ci == NULL ){
+      cdp->data.ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link),
+                                                      rkLinkStuff(cdp->data.cell[1]->data.link) );
+      if( cdp->data.ci == NULL )
+        cdp->data.ci = &fd->_ci_def;
+    }
+  }
   return lc;
 }
 
@@ -171,75 +219,146 @@ bool rkFDChainUnreg(rkFD *fd, rkFDCell *cell)
   rkFDCell *lc;
 
   zListForEach( &fd->list, lc ){
-    if( lc == cell ){
-      if( !_rkFDAllocJointState( fd, lc ) ){
-        rkFDDestroy( fd );
-        return false;
-      }
-      zListPurge( &fd->list, lc );
-      _rkFDCellDatFree( &lc->data );
-      zFree( lc );
-      return true;
+    if( lc != cell ) continue;
+    if( !_rkFDAllocJointState( fd, lc ) ){
+      rkFDDestroy( fd );
+      return false;
     }
+    zListPurge( &fd->list, lc );
+    _rkFDCellDatFree( &lc->data );
+    zFree( lc );
+    return true;
   }
   return false;
 }
 
 /******************************************************************************/
+/* read contact information */
+bool rkFDContactInfoReadFile(rkFD *fd, char filename[]){
+  rkCDPair *cdp;
+
+  if( zArrayNum( &fd->ci ) != 0)
+    rkContactInfoPoolDestroy( &fd->ci );
+  if( !rkContactInfoPoolReadFile( &fd->ci, filename ) ) return false;
+  /* set contact info */
+  zListForEach( &fd->cd.plist, cdp ){
+    cdp->data.ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link),
+                                                    rkLinkStuff(cdp->data.cell[1]->data.link) );
+    if( cdp->data.ci == NULL )
+      cdp->data.ci = &fd->_ci_def;
+  }
+  return true;
+}
+
+/******************************************************************************/
+/* set state function */
 void rkFDChainSetDis(rkFDCell *lc, zVec dis)
 {
   zVecCopy( dis, &lc->data._dis );
   rkChainSetJointDisAll( &lc->data.chain, dis );
 }
 
+void rkFDChainSetVel(rkFDCell *lc, zVec vel)
+{
+  zVecCopy( vel, &lc->data._vel );
+  rkChainSetJointVelAll( &lc->data.chain, vel );
+}
+
+/* connect each cell state to the total state */
+void _rkFDConnectJointState(rkFD *fd, zVec dis, zVec vel, zVec acc)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc ){
+    lc->data._dis.elem = &zVecElem(dis,lc->data._offset);
+    lc->data._vel.elem = &zVecElem(vel,lc->data._offset);
+    lc->data._acc.elem = &zVecElem(acc,lc->data._offset);
+    rkChainFK( &lc->data.chain, &lc->data._dis );
+    rkChainSetJointVelAll( &lc->data.chain, &lc->data._vel );
+    rkChainUpdateVel( &lc->data.chain );
+  }
+}
+
 /******************************************************************************/
-void rkFDChainFK(rkFD *fd, zVec dis)
+/* ODE solver default function */
+zVec rkFDODECatDefault(zVec x, double k, zVec v, zVec xnew, void *util)
+{
+  rkFDCell *lc;
+  zVecStruct lv, lxn;
+
+  zVecCopyNC( x, xnew );
+  zListForEach( &((rkFD *)util)->list, lc ){
+    lv.size  = rkChainJointSize( &lc->data.chain );
+    lxn.size = rkChainJointSize( &lc->data.chain );
+    lv.elem  = &zVecElem(v,   lc->data._offset);
+    lxn.elem = &zVecElem(xnew,lc->data._offset);
+    rkChainCatJointDisAll( &lc->data.chain, &lxn, k, &lv );
+  }
+  return xnew;
+}
+
+zVec rkFDODESubDefault(zVec x1, zVec x2, zVec dx, void *util)
+{
+  rkFDCell *lc;
+  zVecStruct lx2, ldx;
+
+  zVecCopyNC( x1, dx );
+  zListForEach( &((rkFD *)util)->list, lc ){
+    lx2.size = rkChainJointSize( &lc->data.chain );
+    ldx.size = rkChainJointSize( &lc->data.chain );
+    lx2.elem = &zVecElem(x2,lc->data._offset);
+    ldx.elem = &zVecElem(dx,lc->data._offset);
+    rkChainSubJointDisAll( &lc->data.chain, &ldx, &lx2 );
+  }
+  return dx;
+}
+
+/******************************************************************************/
+/* forward kinematics */
+/* NOTE:
+ * this function doesn't update the total state in rkFD
+ * it may be better to change the specification
+ */
+void rkFDFK(rkFD *fd, zVec dis)
 {
   rkFDCell *lc;
   zVecStruct ldis;
 
   zListForEach( &fd->list, lc ){
     ldis.size = rkChainJointSize( &lc->data.chain );
-    ldis.elem = &zVecElem( dis, lc->data._offset );
+    ldis.elem = &zVecElem(dis,lc->data._offset);
     rkChainFK( &lc->data.chain, &ldis );
   }
 }
 
-void rkFDChainUpdateRate(rkFD *fd, zVec vel, zVec acc)
+void rkFDUpdateRate(rkFD *fd, zVec vel, zVec acc)
 {
   rkFDCell *lc;
   zVecStruct lvel, lacc;
 
   zListForEach( &fd->list, lc ){
     lvel.size = lacc.size = rkChainJointSize( &lc->data.chain );
-    lvel.elem = &zVecElem( vel, lc->data._offset );
-    lacc.elem = &zVecElem( acc, lc->data._offset );
+    lvel.elem = &zVecElem(vel,lc->data._offset);
+    lacc.elem = &zVecElem(acc,lc->data._offset);
     rkChainSetJointRateAll( &lc->data.chain, &lvel, &lacc );
     rkChainUpdateRateGrav( &lc->data.chain );
   }
 }
 
-void _rkFDChainUpdateFKRateCellDat(rkFDCellDat *ld)
+void _rkFDChainUpdateFKRate(rkFDCell *lc)
 {
-  rkChainFK( &ld->chain, &ld->_dis );
-  rkChainSetJointRateAll( &ld->chain, &ld->_vel, &ld->_acc );
-  rkChainUpdateRateGrav( &ld->chain );
+  rkChainFK( &lc->data.chain, &lc->data._dis );
+  rkChainSetJointRateAll( &lc->data.chain, &lc->data._vel, &lc->data._acc );
+  rkChainUpdateRateGrav( &lc->data.chain );
 }
 
-void rkFDChainUpdateFKRate(rkFD *fd)
+void rkFDUpdateFKRate(rkFD *fd)
 {
   rkFDCell *lc;
 
   zListForEach( &fd->list, lc ){
-    _rkFDChainUpdateFKRateCellDat( &lc->data );
+    _rkFDChainUpdateFKRate( lc );
   }
-}
-
-/******************************************************************************/
-bool rkFDContactInfoReadFile(rkFD *fd, char filename[]){
-  if( zArrayNum( &fd->ci ) != 0)
-    rkContactInfoPoolDestroy( &fd->ci );
-  return rkContactInfoPoolReadFile( &fd->ci, filename );
 }
 
 /******************************************************************************/
@@ -299,72 +418,174 @@ rkCDCell *rkFDShape3DSetSlideAxis(rkFD *fd, zShape3D *shape, zVec3D *axis)
 }
 
 /******************************************************************************/
-zVec rkFDODECatDefault(zVec x, double k, zVec v, zVec xnew, void *util)
+/* relative velocity */
+zVec3D *_rkFDLinkPointWldVel(rkLink *link, zVec3D *p, zVec3D *v)
 {
-  rkFDCell *lc;
-  zVecStruct lv, lxn;
+  zVec6D v6;
+  zVec3D tempv;
 
-  zVecCopyNC( x, xnew );
-  zListForEach( &((rkFD *)util)->list, lc ){
-    lv.size  = rkChainJointSize( &lc->data.chain );
-    lxn.size = rkChainJointSize( &lc->data.chain );
-    lv.elem  = &zVecElem( v,    lc->data._offset );
-    lxn.elem = &zVecElem( xnew, lc->data._offset );
-    rkChainCatJointDisAll( &lc->data.chain, &lxn, k, &lv );
-  }
-  return xnew;
+  zMulMatVec6D( rkLinkWldAtt(link), rkLinkVel(link), &v6 );
+  zVec3DSub( p, rkLinkWldPos(link) ,&tempv );
+  zVec3DOuterProd( zVec6DAng(&v6), &tempv, &tempv );
+  zVec3DAdd( zVec6DLin(&v6), &tempv, v );
+  return v;
 }
 
-zVec rkFDODESubDefault(zVec x1, zVec x2, zVec dx, void *util)
+void _rkFDLinkAddSlideVel(rkCDCell *cell, zVec3D *p, zVec3D *n, zVec3D *v)
 {
-  rkFDCell *lc;
-  zVecStruct lx2, ldx;
+  zVec3D sv, tmpv;
 
-  zVecCopyNC( x1, dx );
-  zListForEach( &((rkFD *)util)->list, lc ){
-    lx2.size = rkChainJointSize( &lc->data.chain );
-    ldx.size = rkChainJointSize( &lc->data.chain );
-    lx2.elem = &zVecElem( x2, lc->data._offset );
-    ldx.elem = &zVecElem( dx, lc->data._offset );
-    rkChainSubJointDisAll( &lc->data.chain, &ldx, &lx2 );
+  zVec3DSub( p, rkLinkWldPos(cell->data.link), &tmpv );
+  zMulMatVec3D( rkLinkWldAtt(cell->data.link), &cell->data.slide_axis, &sv );
+  zVec3DOuterProd( &sv, &tmpv, &sv );
+  zVec3DCatDRC( &sv, -zVec3DInnerProd( &sv, n ), n );
+  if( zIsTiny( zVec3DNorm( &sv ) ) ){
+    zVec3DClear( &sv );
+  }else{
+    zVec3DMulDRC( &sv, cell->data.slide_vel/zVec3DNorm( &sv ) );
   }
-  return dx;
+  zVec3DAddDRC( v, &sv );
+}
+
+zVec3D *_rkFDChainPointRelativeVel(rkCDPair *cdp, zVec3D *p, zVec3D *n, rkCDCell *cell, zVec3D *v)
+{
+  zVec3D vv[2];
+  register int i;
+
+  for( i=0; i<2; i++ ){
+    if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
+      zVec3DClear( &vv[i] );
+    else
+      _rkFDLinkPointWldVel( cdp->data.cell[i]->data.link, p, &vv[i] );
+    if( cdp->data.cell[i]->data.slide_mode )
+      _rkFDLinkAddSlideVel( cdp->data.cell[i], p, n, &vv[i] );
+  }
+  if( cdp->data.cell[0] == cell )
+    zVec3DSub( &vv[0], &vv[1], v );
+  else
+    zVec3DSub( &vv[1], &vv[0], v );
+  return v;
+}
+
+zVec6D *_rkFDLinkPointWldVel6D(rkLink *link, zVec3D *p, zVec6D *v)
+{
+  zVec3D tempv;
+
+  zMulMatVec6D( rkLinkWldAtt(link), rkLinkVel(link), v );
+  zVec3DSub( p, rkLinkWldPos(link) ,&tempv );
+  zVec3DOuterProd( zVec6DAng(v), &tempv, &tempv );
+  zVec3DAddDRC( zVec6DLin(v), &tempv );
+  return v;
+}
+
+zVec6D *_rkFDChainPointRelativeVel6D(rkCDPair *cdp, zVec3D *p, zVec3D *n, zVec6D *v)
+{
+  zVec6D vv[2];
+  register int i;
+
+  for( i=0; i<2; i++ ){
+    if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
+      zVec6DClear( &vv[i] );
+    else
+      _rkFDLinkPointWldVel6D( cdp->data.cell[i]->data.link, p, &vv[i] );
+    /* NOTE: this version of the volume-based method does not support slide-mode */
+    /* if( cdp->data.cell[i]->data.slide_mode ) */
+    /*  _rkFDLinkAddSlideVel( cdp->data.cell[i], p, n, &vv[i] ); */
+  }
+  zVec6DSub( &vv[0], &vv[1], v );
+  return v;
+}
+
+/* relative acceleration */
+zVec3D *_rkFDLinkPointWldAcc(rkLink *link, zVec3D *p, zVec3D *a)
+{
+  zVec3D vp;
+
+  zVec3DSub( p, rkLinkWldPos(link), &vp );
+  zMulMatTVec3DDRC( rkLinkWldAtt(link), &vp );
+  rkLinkPointAcc( link, &vp, a );
+  zMulMatVec3DDRC( rkLinkWldAtt(link), a );
+  return a;
+}
+
+zVec3D *_rkFDChainPointRelativeAcc(rkCDPair *cdp, zVec3D *p, rkCDCell *cell, zVec3D *a)
+{
+  zVec3D av[2];
+  register int i;
+
+  for( i=0; i<2; i++ )
+    if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
+      zVec3DClear( &av[i] );
+    else
+      _rkFDLinkPointWldAcc( cdp->data.cell[i]->data.link, p, &av[i] );
+  if( cdp->data.cell[0] == cell )
+    zVec3DSub( &av[0], &av[1], a );
+  else
+    zVec3DSub( &av[1], &av[0], a );
+  return a;
+}
+
+zVec6D *_rkFDLinkPointWldAcc6D(rkLink *link, zVec3D *p, zVec6D *a)
+{
+  zVec3D vp;
+
+  zVec3DSub( p, rkLinkWldPos(link), &vp );
+  zMulMatTVec3DDRC( rkLinkWldAtt(link), &vp );
+  rkLinkPointAcc( link, &vp, zVec6DLin(a) );
+  zMulMatVec3DDRC( rkLinkWldAtt(link), zVec6DLin(a) );
+  zMulMatVec3D( rkLinkWldAtt(link), rkLinkAngAcc(link), zVec6DAng(a) );
+  return a;
+}
+
+zVec6D *_rkFDChainPointRelativeAcc6D(rkCDPair *cdp, zVec3D *p, zVec6D *a)
+{
+  zVec6D av[2];
+  register int i;
+
+  for( i=0; i<2; i++ )
+    if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
+      zVec6DClear( &av[i] );
+    else{
+      _rkFDLinkPointWldAcc6D( cdp->data.cell[i]->data.link, p, &av[i] );
+    }
+  zVec6DSub( &av[0], &av[1], a );
+  return a;
 }
 
 /******************************************************************************/
-void _rkFDChainConnectJointState(rkFD *fd, zVec dis, zVec vel, zVec acc)
-{
-  rkFDCell *lc;
-
-  zListForEach( &fd->list, lc ){
-    lc->data._dis.elem = &zVecElem( dis, lc->data._offset );
-    lc->data._vel.elem = &zVecElem( vel, lc->data._offset );
-    lc->data._acc.elem = &zVecElem( acc, lc->data._offset );
-    _rkFDChainUpdateFKRateCellDat( &lc->data );
-  }
+double _rkFDKineticFrictionWeight(rkFD *fd, double fs){
+  return 1.0 - exp( -1.0 * fd->_kf_weight * fs );
 }
 
-/******************************************************************************/
-void _rkFDJointCalcFriction(rkFD *fd, bool doUpRef)
+/* joint friction and joint reference */
+/* NOTE:
+ * before this function is called,
+ * the reference value at the one step before must be set
+ */
+void _rkFDJointFriction(rkFD *fd, bool doUpRef)
 {
   rkFDCell *lc;
   rkFDCellDat *ld;
   rkJoint *joint;
-  register int i;
-  double A, b, kf[6], sf, val, tf;
+  register int i, j;
+  double A, b, kf[6], sf, v[6], val, tf;
   rkJointRef jref;
 
   zListForEach( &fd->list, lc ){
     ld = &lc->data;
     if( rkChainJointSize( &ld->chain ) == 0 ) continue;
-    for( i=0; i<rkChainNum( &ld->chain ); i++ ){
-      joint = rkChainLinkJoint( &ld->chain, i );
+    for( i=0; i<rkChainNum(&ld->chain); i++ ){
+      joint = rkChainLinkJoint(&ld->chain,i);
       /* 1DoF joint and DC motor only */
       if( rkJointSize(joint) != 1 || rkJointMotorType(joint) != RK_MOTOR_DC ){
         rkJointGetKFric( joint, kf );
+        rkJointGetVel( joint, v );
+        for( j=0; j<rkJointSize(joint); j++ )
+          kf[j] *= _rkFDKineticFrictionWeight( fd, fabs(v[j]) );
         rkJointSetFric( joint, kf );
         continue;
       }
+      /* for DC motor model */
       rkJointMotorInertia( joint, &val );
       A = 1.0 / val;
       rkJointMotorInputTrq( joint, &b );
@@ -372,385 +593,33 @@ void _rkFDJointCalcFriction(rkFD *fd, bool doUpRef)
       rkJointGetRef( joint, &jref );
       b -= val + jref.ref_trq;
       b *= A * fd->dt;
-      rkJointGetVel( joint, &val );
-      b += val;
+      rkJointGetVel( joint, v );
+      b += v[0];
       rkJointGetDis( joint, &val );
       b += fd->_comp_k * ( val - jref.ref_dis );
       tf = -( A * b / ( zSqr( A ) + fd->_comp_l ) ) / fd->dt;
 
       rkJointGetSFric( joint, &sf );
-
       if( fabs( tf ) > sf ){
-        rkJointGetKFric( joint, kf );
-        tf = kf[0];
+        rkJointGetKFric( joint, &tf );
+        tf *= _rkFDKineticFrictionWeight( fd, fabs(v[0]) );
         if( doUpRef ){
           jref.ref_dis = val;
-          jref.type = RK_CONTACT_SLIP;
+          jref.type = RK_CONTACT_KF;
+          rkJointSetRef( joint, &jref );
         }
       } else{
         if( doUpRef ){
-          jref.type = RK_CONTACT_STICK;
+          jref.type = RK_CONTACT_SF;
+          rkJointSetRef( joint, &jref );
         }
       }
       rkJointSetFric( joint, &tf );
-      rkJointSetRef( joint, &jref );
     }
   }
 }
 
-/******************************************************************************/
-void _rkFDUpdateAcc(rkFD *fd)
-{
-  rkFDCell *lc;
-
-  zListForEach( &fd->list, lc )
-    rkChainABI( &lc->data.chain, &lc->data._dis, &lc->data._vel, &lc->data._acc );
-}
-
-void _rkFDContactRelativeAcc(rkFD *fd, zVec acc)
-{
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  register int i;
-  int offset = 0;
-  zVec3D av[2], vp, lvw, tempv;
-  zVec6D la;
-  rkCDCellDat *celld[2];
-
-  _rkFDUpdateAcc( fd );
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    zListForEach( &cdp->data.vlist, cdv ){
-      celld[0] = &cdv->data.cell->data;
-      celld[1] = cdv->data.cell != cdp->data.cell[0] ? &cdp->data.cell[0]->data : &cdp->data.cell[1]->data;
-      /* compute acc */
-      for( i=0; i<2; i++){
-        if( celld[i]->type == RK_CD_CELL_STAT ){
-          zVec3DClear( &av[i] );
-          continue;
-        }
-        zMulMatVec3D( rkLinkWldAtt( celld[i]->link ), zVec6DAng( rkLinkVel( celld[i]->link ) ), &lvw );
-        zMulMatVec6D( rkLinkWldAtt( celld[i]->link ), rkLinkAcc( celld[i]->link ), &la );
-        zVec3DSub( cdv->data.vert, rkLinkWldPos( celld[i]->link ), &vp );
-        zVec3DTripleProd( &lvw, &lvw, &vp, &av[i] );
-        zVec3DOuterProd( zVec6DAng( &la ), &vp, &tempv );
-        zVec3DAddDRC( &av[i], &tempv );
-        zVec3DAddDRC( &av[i], zVec6DLin( &la ) );
-      }
-      zVec3DSub( &av[0], &av[1], &tempv );
-
-      for( i=0; i<3; i++ ){
-        zVecElem( acc, offset+i ) = zVec3DInnerProd( &cdv->data.axis[i], &tempv );
-      }
-      offset += 3;
-    }
-  }
-}
-
-void _rkFDChainExtWrenchDestroy(rkFD *fd)
-{
-  rkFDCell *lc;
-
-  zListForEach( &fd->list, lc )
-    rkChainExtWrenchDestroy( &lc->data.chain );
-}
-
-void _rkFDContactRelationAccForce(rkFD *fd, zMat A, zVec b)
-{
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  rkWrench *w;
-  register int i, j;
-  int offset = 0;
-  rkCDCellDat *celld[2];
-  zVec t;
-
-  t = zVecAlloc( zVecSize( b ) );
-  /* b */
-  _rkFDChainExtWrenchDestroy( fd );
-  _rkFDContactRelativeAcc( fd, b );
-  /* A */
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    zListForEach( &cdp->data.vlist, cdv ){
-      celld[0] = &cdv->data.cell->data;
-      celld[1] = cdv->data.cell != cdp->data.cell[0] ? &cdp->data.cell[0]->data : &cdp->data.cell[1]->data;
-      for( i=0; i<3; i++ ){
-        for( j=0; j<2; j++ ){
-          if( celld[j]->type == RK_CD_CELL_STAT ) continue;
-          w = zAlloc( rkWrench, 1 );
-          rkWrenchInit( w );
-          zXfer3DInv( rkLinkWldFrame( celld[j]->link ), cdv->data.vert, rkWrenchPos( w ) );
-          zMulMatTVec3D( rkLinkWldAtt( celld[j]->link ), &cdv->data.axis[i], rkWrenchForce( w ) );
-          zVec3DMulDRC( rkWrenchForce( w ), j==0 ? 1.0 : -1.0 );
-          rkLinkExtWrenchPush( celld[j]->link, w );
-        }
-        /* calc acc */
-        _rkFDContactRelativeAcc( fd, t );
-        zVecSubDRC( t, b );
-        zMatSetCol( A, offset+i, t );
-        /* destroy */
-        _rkFDChainExtWrenchDestroy( fd );
-      }
-      offset += 3;
-    }
-  }
-  zVecFree( t );
-}
-
-static rkContactInfo _rkFDContactInfoDefault={
-  { NULL, NULL },
-  RK_CONTACT_RIGID,
-  { { 1000.0, 1.0 } },
-  0.5, 0.3,
-};
-
-void _rkFDContactCompensateDepth(rkFD *fd, zMat A, zVec b)
-{
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  rkContactInfo *ci;
-  register int i;
-  int offset = 0;
-  rkCDCellDat *celld[2];
-  zVec3D d, vr, vv[2], tempv, sv;
-  zVec6D v6;
-
-  zVecMulDRC( b, fd->dt );
-  _rkFDUpdateAcc( fd );
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-    if( !ci ) ci = &_rkFDContactInfoDefault;
-    zListForEach( &cdp->data.vlist, cdv ){
-      celld[0] = &cdv->data.cell->data;
-      celld[1] = cdv->data.cell != cdp->data.cell[0] ? &cdp->data.cell[0]->data : &cdp->data.cell[1]->data;
-      /* d */
-      zVec3DSub( cdv->data.vert, &cdv->data.ref, &d );
-      /* v */
-      for( i=0; i<2; i++){
-        if( celld[i]->type == RK_CD_CELL_STAT ) zVec3DClear( &vv[i] );
-        else{
-          zMulMatVec6D( rkLinkWldAtt( celld[i]->link ), rkLinkVel( celld[i]->link ), &v6 );
-          zVec3DSub( cdv->data.vert, rkLinkWldPos( celld[i]->link ) ,&tempv );
-          zVec3DOuterProd( zVec6DAng( &v6 ), &tempv, &tempv );
-          zVec3DAdd( zVec6DLin( &v6 ), &tempv, &vv[i] );
-        }
-        /* for a fake-crawler */
-        if( celld[i]->slide_mode ){
-          zVec3DSub( cdv->data.vert, rkLinkWldPos( celld[i]->link ), &tempv );
-          zMulMatVec3D( rkLinkWldAtt( celld[i]->link ), &celld[i]->slide_axis, &sv );
-          zVec3DOuterProd( &sv, &tempv, &sv );
-          zVec3DCatDRC( &sv, -zVec3DInnerProd( &sv, &cdv->data.norm ), &cdv->data.norm );
-          if( !zVec3DIsTiny( &sv ) )
-            zVec3DCatDRC( &vv[i], celld[i]->slide_vel/zVec3DNorm(&sv), &sv );
-        }
-      }
-      zVec3DSub( &vv[0], &vv[1], &vr );
-
-      /* compensation */
-      zVecElem( b, offset   ) += zVec3DInnerProd( &vr, &cdv->data.axis[0] ) + rkContactInfoK( ci )                         * zVec3DInnerProd( &d, &cdv->data.axis[0] );
-      zVecElem( b, offset+1 ) += zVec3DInnerProd( &vr, &cdv->data.axis[1] ) + rkContactInfoK( ci ) * rkContactInfoKF( ci ) * zVec3DInnerProd( &d, &cdv->data.axis[1] );
-      zVecElem( b, offset+2 ) += zVec3DInnerProd( &vr, &cdv->data.axis[2] ) + rkContactInfoK( ci ) * rkContactInfoKF( ci ) * zVec3DInnerProd( &d, &cdv->data.axis[2] );
-      offset += 3;
-    }
-  }
-}
-
-void _rkFDContactSetForce(rkFD *fd, zVec f)
-{
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  int offset = 0;
-
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ||
-       ( cdp->data.cell[0]->data.type == RK_CD_CELL_STAT &&
-         cdp->data.cell[1]->data.type == RK_CD_CELL_STAT ) ) continue;
-    zListForEach( &cdp->data.vlist, cdv ){
-      zVec3DCopy( (zVec3D *)&zVecElem( f, offset ), &cdv->data.f );
-      offset += 3;
-    }
-  }
-}
-
-void _rkFDContactSolveQP(rkFD *fd, zMat A, zVec b)
-{
-  zMat Q, C;
-  zVec c, d, f;
-  register int i;
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  rkContactInfo *ci;
-  int offset = 0;
-
-  /* unilateral constraint */
-  C = zMatAlloc( fd->cd.colnum, 3*fd->cd.colnum );
-  d = zVecAlloc( fd->cd.colnum );
-  zMatClear( C );
-  zVecClear( d );
-  for( i=0; i<fd->cd.colnum; i++ ){
-    zMatElem( C, i, 3*i ) = 1.0;
-  }
-
-  /* QP */
-  Q = zMatAllocSqr( 3*fd->cd.colnum );
-  c = zVecAlloc( 3*fd->cd.colnum );
-  zMulMatTMat( A, A, Q );
-
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-    if( !ci ) ci = &_rkFDContactInfoDefault;
-    zListForEach( &cdp->data.vlist, cdv ){
-      for( i=0; i<3; i++ )
-        zMatElem( Q, offset+i, offset+i ) += rkContactInfoL( ci );
-      offset += 3;
-    }
-  }
-  zMulMatTVec( A, b, c );
-
-  /* solve */
-  f = zVecAlloc( 3*fd->cd.colnum );
-  zQPSolveASM( Q, c, C, d, f, NULL, NULL, NULL );
-
-  zVecDivDRC( f, fd->dt );
-  _rkFDContactSetForce( fd, f );
-
-  zMatFreeAO( 2, Q, C );
-  zVecFreeAO( 3, c, d, f );
-}
-
-void _rkFDContactCalcForce(rkFD *fd)
-{
-  zMat A;
-  zVec b;
-
-  A = zMatAllocSqr( 3*(fd->cd.colnum) );
-  b = zVecAlloc( 3*(fd->cd.colnum) );
-  _rkFDContactRelationAccForce( fd, A, b );
-  _rkFDContactCompensateDepth( fd, A, b );
-  _rkFDContactSolveQP( fd, A, b );
-  zMatFree( A );
-  zVecFree( b );
-}
-
-void _rkFDContactModForce(rkFD *fd, bool doUpRef)
-{
-  rkCDPair *cdp;
-  rkCDVert *cdv;
-  rkContactInfo *ci;
-  double fn, fs;
-  rkCDCellDat *celld[2];
-  zVec3D f, vr, vv[2], tempv, sv;
-  zVec6D v6;
-  rkWrench *w;
-  register int i;
-
-  _rkFDChainExtWrenchDestroy( fd );
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-    if( !ci ) ci = &_rkFDContactInfoDefault;
-    zListForEach( &cdp->data.vlist, cdv ){
-      celld[0] = &cdv->data.cell->data;
-      celld[1] = cdv->data.cell != cdp->data.cell[0] ? &cdp->data.cell[0]->data : &cdp->data.cell[1]->data;
-      /* v */
-      for( i=0; i<2; i++){
-        if( celld[i]->type == RK_CD_CELL_STAT ){
-          zVec3DClear( &vv[i] );
-        } else{
-          zMulMatVec6D( rkLinkWldAtt( celld[i]->link ), rkLinkVel( celld[i]->link ), &v6 );
-          zVec3DSub( cdv->data.vert, rkLinkWldPos( celld[i]->link ) ,&tempv );
-          zVec3DOuterProd( zVec6DAng( &v6 ), &tempv, &tempv );
-          zVec3DAdd( zVec6DLin( &v6 ), &tempv, &vv[i] );
-        }
-      }
-      zVec3DSub( &vv[0], &vv[1], &vr );
-      zVec3DCatDRC( &vr, -zVec3DInnerProd( &vr, &cdv->data.axis[0] ), &cdv->data.axis[0] );
-      if( zVec3DIsTiny( &vr ) ) zVec3DClear( &vr );
-      else zVec3DNormalizeDRC( &vr );
-
-      fn = cdv->data.f.e[zX];
-      fs = sqrt( zSqr(cdv->data.f.e[zY]) + zSqr(cdv->data.f.e[zZ]) );
-
-      /* friction corn */
-      if( !zIsTiny( fs ) &&
-          fs > ( cdv->data.type == RK_CONTACT_STICK ? rkContactInfoSF(ci) : rkContactInfoKF(ci) )*fn ){
-        zVec3DMul( &vr, -rkContactInfoKF(ci)*fn, &f );
-        zVec3DCatDRC( &f, fn, &cdv->data.axis[0] );
-        cdv->data.f.e[zY] = zVec3DInnerProd( &f, &cdv->data.axis[1] );
-        cdv->data.f.e[zZ] = zVec3DInnerProd( &f, &cdv->data.axis[2] );
-        if( doUpRef ){
-          cdv->data.type = RK_CONTACT_SLIP;
-          zVec3DCopy( &cdv->data._pro, &cdv->data._ref );
-        }
-      } else{
-        zVec3DClear( &f );
-        for( i=zX; i<=zZ; i++ )
-          zVec3DCatDRC( &f, cdv->data.f.e[i], &cdv->data.axis[i] );
-        if( doUpRef ){
-          cdv->data.type = RK_CONTACT_STICK;
-          /* for a fake-crawler */
-          for( i=0; i<2; i++ ){
-            if( celld[i]->slide_mode ){
-              zVec3DSub( cdv->data.vert, rkLinkWldPos( celld[i]->link ), &tempv );
-              zMulMatVec3D( rkLinkWldAtt( celld[i]->link ), &celld[i]->slide_axis, &sv );
-              zVec3DOuterProd( &sv, &tempv, &sv );
-              zVec3DCatDRC( &sv, -zVec3DInnerProd( &sv, &cdv->data.norm ), &cdv->data.norm );
-              if( !zVec3DIsTiny( &sv ) ){
-                zVec3DMulDRC( &sv, (i==0?-1.0:1.0)*rkFDDT(fd)*celld[i]->slide_vel/zVec3DNorm(&sv) );
-                zMulMatTVec3DDRC( rkLinkWldAtt( celld[1]->link ), &sv );
-                zVec3DAddDRC( &cdv->data._ref, &sv );
-              }
-            }
-          }
-        }
-      }
-
-      /* set wrench */
-      for( i=0; i<2; i++){
-        w = zAlloc( rkWrench, 1 );
-        rkWrenchInit( w );
-        zXfer3DInv( rkLinkWldFrame(celld[i]->link), cdv->data.vert, rkWrenchPos(w) );
-        zMulMatTVec3D( rkLinkWldAtt(celld[i]->link), &f, rkWrenchForce(w) );
-        rkLinkExtWrenchPush( celld[i]->link, w );
-        zVec3DRevDRC( &f );
-      }
-    }
-  }
-}
-
-/******************************************************************************/
-void _rkFDSolveJointContact(rkFD *fd, bool doUpRef)
-{
-  /* update CD */
-  zEchoOff();
-  rkCDColChkVert( &fd->cd );
-  zEchoOn();
-  /* compute joint friction */
-  _rkFDJointCalcFriction( fd, doUpRef );
-  if( fd->cd.colnum == 0 ) return;
-  /* compute contact force */
-  _rkFDContactCalcForce( fd );
-  /* modify contact force */
-  _rkFDContactModForce( fd, doUpRef );
-  return;
-}
-
-/******************************************************************************/
-zVec _rkFDUpdate(double t, zVec dis, zVec vel, void *fd, zVec acc)
-{
-  zVecClear( acc );
-  _rkFDChainConnectJointState( fd, dis, vel, acc );
-  _rkFDChainExtWrenchDestroy( fd );
-  _rkFDSolveJointContact( fd, false );
-  zVecClear( acc );
-  _rkFDUpdateAcc( fd );
-  return acc;
-}
-
-void _rkFDUpdateRefDrivingTorque(rkFD *fd)
+void _rkFDUpdateJointRefDrivingTrq(rkFD *fd)
 {
   rkFDCell *lc;
   rkFDCellDat *ld;
@@ -761,59 +630,187 @@ void _rkFDUpdateRefDrivingTorque(rkFD *fd)
 
   zListForEach( &fd->list, lc ){
     ld = &lc->data;
-    for( i=0; i<rkChainNum( &ld->chain ); i++ ){
-      joint = rkChainLinkJoint( &ld->chain, i );
+    for( i=0; i<rkChainNum(&ld->chain); i++ ){
+      joint = rkChainLinkJoint(&ld->chain,i);
       rkJointGetRef( joint, jref );
       rkJointGetFric( joint, tf );
       rkJointMotorDrivingTrq( joint, val );
-      for( j=0; j<rkJointSize( joint ); j++ ){
+      for( j=0; j<rkJointSize(joint); j++ ){
         jref[j].ref_trq = val[j] + tf[j];
-      }
-    }
-  }
-}
-
-void _rkFDUpdateRef(rkFD *fd)
-{
-  zVecClear( fd->acc );
-  _rkFDChainConnectJointState( fd, fd->dis, fd->vel, fd->acc );
-  _rkFDChainExtWrenchDestroy( fd );
-
-  _rkFDSolveJointContact( fd, true );
-  _rkFDUpdateAcc( fd );
-  zVecClear( fd->acc );
-  _rkFDUpdateRefDrivingTorque( fd );
-}
-
-/******************************************************************************/
-void _rkFDJointRefInit(rkFD *fd)
-{
-  register int i, j;
-  rkJoint *joint;
-  double val[6];
-  rkJointRef jref[6];
-  rkFDCell *lc;
-
-  zListForEach( &fd->list, lc ){
-    for( i=0; i<rkChainNum( &lc->data.chain ); i++ ){
-      joint = rkChainLinkJoint( &lc->data.chain, i );
-      rkJointGetDis( joint, val );
-      for( j=0; j<rkJointSize( joint ); j++ ){
-        jref[j].ref_dis = val[j];
-        jref[j].ref_trq = 0.0;
-        jref[j].type = RK_CONTACT_STICK;
       }
       rkJointSetRef( joint, jref );
     }
   }
 }
 
-/* rkFDSolve_Vert
- * - solve the forward dynamics based on point contacts.
- */
-rkFD *rkFDSolve_Vert(rkFD *fd)
+/******************************************************************************/
+/* destroy temporary wrench list */
+void _rkFDChainExtWrenchDestroy(rkChain *chain)
 {
-  if( zIsTiny( fd->t ) ) _rkFDJointRefInit( fd );
+  register int i;
+
+  for( i=0; i<rkChainNum(chain); i++ )
+    rkWrenchListDestroy( &rkLinkABIPrp(rkChainLink(chain,i))->wlist );
+}
+
+void _rkFDExtWrenchDestroy(rkFD *fd)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc )
+    _rkFDChainExtWrenchDestroy( &lc->data.chain );
+}
+
+/******************************************************************************/
+/* acceleration update function */
+/* this has not be used due to high computation cost */
+void _rkFDUpdateAcc(rkFD *fd)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc ){
+    rkChainABI( &lc->data.chain, &lc->data._dis, &lc->data._vel, &lc->data._acc );
+  }
+}
+
+/* update and set ABIPrp */
+void _rkFDUpdateAccBias(rkFD *fd)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc ){
+    if( lc->data.chain._col_flag ){
+      rkChainABIUpdate( &lc->data.chain );
+      rkChainABIPushPrpAccBias( &lc->data.chain );
+      _rkFDChainExtWrenchDestroy( &lc->data.chain );
+    }
+  }
+}
+
+void _rkFDChainUpdateAccAddExForceTwo(rkCDPair *cdp, rkWrench *w[])
+{
+  if( cdp->data.cell[0]->data.chain == cdp->data.cell[1]->data.chain ) /* self collision */
+    rkChainABIUpdateAddExForceTwo( cdp->data.cell[0]->data.chain, cdp->data.cell[0]->data.link, w[0], cdp->data.cell[1]->data.link, w[1] );
+  else {
+    rkChainABIUpdateAddExForceTwo( cdp->data.cell[0]->data.chain, cdp->data.cell[0]->data.link, w[0], NULL, NULL );
+    rkChainABIUpdateAddExForceTwo( cdp->data.cell[1]->data.chain, cdp->data.cell[1]->data.link, w[1], NULL, NULL );
+  }
+}
+
+void _rkFDChainABIPopPrpExForceTwo(rkCDPair *cdp, rkWrench *w[])
+{
+  if( cdp->data.cell[0]->data.chain == cdp->data.cell[1]->data.chain )
+    rkChainABIPopPrpAccBiasAddExForceTwo( cdp->data.cell[0]->data.chain, cdp->data.cell[0]->data.link, cdp->data.cell[1]->data.link );
+  else {
+    rkChainABIPopPrpAccBiasAddExForceTwo( cdp->data.cell[0]->data.chain, cdp->data.cell[0]->data.link, NULL );
+    rkChainABIPopPrpAccBiasAddExForceTwo( cdp->data.cell[1]->data.chain, cdp->data.cell[1]->data.link, NULL );
+  }
+}
+
+void _rkFDUpdateAccAddExForce(rkFD *fd)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc ){
+    if( lc->data.chain._col_flag ){
+      rkChainABIUpdateAddExForce( &lc->data.chain );
+      lc->data.chain._col_flag = false;
+    } else
+      rkChainABIUpdate( &lc->data.chain );
+    rkChainGetJointAccAll( &lc->data.chain, &lc->data._acc );
+  }
+}
+
+/* update and compute link wrench */
+void _rkFDUpdateAccRef(rkFD *fd)
+{
+  rkFDCell *lc;
+
+  zListForEach( &fd->list, lc ){
+    if( lc->data.chain._col_flag ){
+      rkChainABIUpdateAddExForceGetWrench( &lc->data.chain );
+      lc->data.chain._col_flag = false;
+    } else
+      rkChainABIUpdateGetWrench( &lc->data.chain );
+    rkChainGetJointAccAll( &lc->data.chain, &lc->data._acc );
+  }
+}
+
+/******************************************************************************/
+/* for breaking joint */
+bool _rkFDLinkIsBroken(rkLink *link)
+{
+  switch( rkLinkJointType(link) ){
+  case RK_JOINT_REVOL:
+    return ( zVec3DInnerProd( zMat3DVec(rkLinkWldAtt(link),zZ), zVec6DAng(rkLinkWrench(link))) > rkLinkBreakPrp(link)->ep_t );
+  case RK_JOINT_FLOAT:
+    return ( zVec3DNorm( zVec6DLin(rkLinkWrench(link)) ) > rkLinkBreakPrp(link)->ep_f ) ||
+           ( zVec3DNorm( zVec6DAng(rkLinkWrench(link)) ) > rkLinkBreakPrp(link)->ep_t );
+  default:
+    return false;
+  }
+}
+
+void _rkFDLinkJoinSetFunc(rkLink *link)
+{
+  switch( rkLinkJointType(link) ){
+  case RK_JOINT_REVOL:
+    rkJointSetFuncRevol( rkLinkJoint(link) );
+    break;
+  case RK_JOINT_FLOAT:
+    rkJointSetFuncFloat( rkLinkJoint(link) );
+    break;
+  default:
+    break;
+  }
+}
+
+void _rkFDUpdateLinkBreak(rkFD *fd)
+{
+  rkFDCell *lc;
+  rkBreakPrp *bprp;
+  register int i;
+
+  zListForEach( &fd->list, lc )
+    for( i=0; i<rkChainNum(&lc->data.chain); i++ ){
+      if( (bprp = rkLinkBreakPrp(rkChainLink(&lc->data.chain,i))) &&
+          !bprp->is_broken && _rkFDLinkIsBroken( rkChainLink(&lc->data.chain,i) ) ){
+        _rkFDLinkJoinSetFunc( rkChainLink(&lc->data.chain,i) );
+        bprp->is_broken = true;
+      }
+    }
+}
+
+/******************************************************************************/
+/* solver function */
+void _rkFDSolveJointContact(rkFD *fd, bool doUpRef)
+{
+  _rkFDExtWrenchDestroy( fd );
+  _rkFDJointFriction( fd, doUpRef );
+  rkFDSolveContact( fd, doUpRef );
+}
+
+zVec _rkFDUpdate(double t, zVec dis, zVec vel, void *fd, zVec acc)
+{
+  zVecClear( acc );
+  _rkFDConnectJointState( fd, dis, vel, acc );
+  _rkFDSolveJointContact( fd, false );
+  _rkFDUpdateAccAddExForce( fd );
+  return acc;
+}
+
+void _rkFDUpdateRef(rkFD *fd)
+{
+  zVecClear( fd->acc );
+  _rkFDConnectJointState( fd, fd->dis, fd->vel, fd->acc );
+  _rkFDSolveJointContact( fd, true );
+  _rkFDUpdateAccRef( fd );
+  _rkFDUpdateJointRefDrivingTrq( fd );
+  _rkFDUpdateLinkBreak( fd );
+}
+
+rkFD *rkFDSolve(rkFD *fd)
+{
   /* reference */
   _rkFDUpdateRef( fd );
   /* integration */
@@ -826,14 +823,13 @@ rkFD *rkFDSolve_Vert(rkFD *fd)
   return fd;
 }
 
-void rkFDUpdateInit_Vert(rkFD *fd)
+void rkFDUpdateInit(rkFD *fd)
 {
   zODE2Init( &fd->_ode, zVecSize( fd->dis ), fd->_ode_step, _rkFDUpdate );
-  _rkFDJointRefInit( fd );
   _rkFDUpdateRef( fd );
 }
 
-rkFD *rkFDUpdate_Vert(rkFD *fd)
+rkFD *rkFDUpdate(rkFD *fd)
 {
   zODE2Update( &fd->_ode, fd->t, fd->dis, fd->vel, fd->dt, fd );
   fd->t += fd->dt;
@@ -841,129 +837,503 @@ rkFD *rkFDUpdate_Vert(rkFD *fd)
   return fd;
 }
 
-void rkFDUpdateDestroy_Vert(rkFD *fd)
+void rkFDUpdateDestroy(rkFD *fd)
 {
   zODE2Destroy( &fd->_ode );
 }
 
 /******************************************************************************/
-/* the forward dynamics based on volumetric contacts
- */
-#define RK_FD_SOLVE_ITER 8
-void _rkFDContactRelativeAcc_Volume(rkFD *fd, zVec acc)
+/* other function */
+/* update coontact flag */
+/* this is called after collision detection */
+void _rkFDUpdateRigidColFlag(rkFD *fd)
+{
+  rkFDCell *lc;
+  rkCDPair *cdp;
+
+  zListForEach( &fd->list, lc )
+    lc->data.chain._col_flag = false;
+  zListForEach( &fd->cd.plist, cdp )
+    if( rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ){
+      cdp->data.cell[0]->data.chain->_col_flag = true;
+      cdp->data.cell[1]->data.chain->_col_flag = true;
+    }
+}
+
+/* ************************************************************************** */
+/* the forward dynamics based on vertex contact
+ * ************************************************************************** */
+void rkFDSetContactInfoDefault_Vert(rkFD *fd)
+{
+  rkContactInfoInit( &fd->_ci_def );
+  rkContactInfoSetType( &fd->_ci_def, RK_CONTACT_RIGID );
+  rkContactInfoSetK( &fd->_ci_def, 1000.0 );
+  rkContactInfoSetL( &fd->_ci_def, 1.0 );
+  rkContactInfoSetSF( &fd->_ci_def, 0.5 );
+  rkContactInfoSetKF( &fd->_ci_def, 0.3 );
+}
+
+void _rkFDContactUpdateRefSlide_Vert(rkCDPair *cdp, rkCDVert *cdv, double dt)
+{
+  register int i;
+  zVec3D tmpv, sv;
+
+  /* for slide mode */
+  for( i=0; i<2; i++ ){
+    if( cdp->data.cell[i]->data.slide_mode ){
+      zVec3DSub( cdv->data.vert, rkLinkWldPos(cdp->data.cell[i]->data.link), &tmpv );
+      zMulMatVec3D( rkLinkWldAtt(cdp->data.cell[i]->data.link), &cdp->data.cell[i]->data.slide_axis, &sv );
+      zVec3DOuterProd( &sv, &tmpv, &sv );
+      zVec3DCatDRC( &sv, -zVec3DInnerProd( &sv, &cdv->data.norm ), &cdv->data.norm );
+      if( !zIsTiny( zVec3DNorm( &sv ) ) ){
+        zVec3DMulDRC( &sv, (cdp->data.cell[i]==cdv->data.cell?-1.0:1.0) * dt * cdp->data.cell[i]->data.slide_vel/zVec3DNorm( &sv ) );
+        zMulMatTVec3DDRC( rkLinkWldAtt(cdp->data.cell[(cdp->data.cell[i]==cdv->data.cell?1:0)]->data.link), &sv );
+        zVec3DAddDRC( &cdv->data._ref, &sv );
+      }
+    }
+  }
+}
+
+void _rkFDContactModForceVert_Vert(rkFD *fd, rkCDPair *cdp, rkCDVert *cdv, zVec3D v, double dt, bool doUpRef)
+{
+  double fn, fs, vs;
+
+  fn = zVec3DInnerProd( &cdv->data.f, &cdv->data.axis[0] );
+  fs = sqrt( zSqr( zVec3DInnerProd( &cdv->data.f, &cdv->data.axis[1] ) ) + zSqr( zVec3DInnerProd( &cdv->data.f, &cdv->data.axis[2] ) ) );
+  if( !zIsTiny( fs ) &&
+      fs > ( cdv->data.type == RK_CONTACT_SF ? rkContactInfoSF(cdp->data.ci) : rkContactInfoKF(cdp->data.ci) )*fn ){
+    /* kinetic friction */
+    zVec3DCatDRC( &v, -zVec3DInnerProd( &v, &cdv->data.axis[0] ), &cdv->data.axis[0] );
+    vs = zVec3DNorm( &v );
+    zVec3DMul( &cdv->data.axis[0], fn, &cdv->data.f );
+    if( !zIsTiny( vs ) ){
+      zVec3DNormalizeNCDRC( &v );
+      zVec3DCatDRC( &cdv->data.f, - _rkFDKineticFrictionWeight( fd, vs ) * rkContactInfoKF(cdp->data.ci) * fn, &v );
+    }
+    if( doUpRef ){
+      cdv->data.type = RK_CONTACT_KF;
+      zVec3DCopy( &cdv->data._pro, &cdv->data._ref );
+    }
+  } else {
+    /* static friction */
+    if( doUpRef ){
+      cdv->data.type = RK_CONTACT_SF;
+      _rkFDContactUpdateRefSlide_Vert( cdp, cdv, dt );
+    }
+  }
+}
+
+void _rkFDContactSetWrench_Vert(rkCDPair *cdp, rkCDVert *cdv)
+{
+  rkWrench *w;
+  register int i;
+
+  for( i=0; i<2; i++){
+    w = zAlloc( rkWrench, 1 );
+    rkWrenchInit( w );
+    zXfer3DInv( rkLinkWldFrame(cdp->data.cell[i]->data.link), cdv->data.vert, rkWrenchPos(w) );
+    zMulMatTVec3D( rkLinkWldAtt(cdp->data.cell[i]->data.link), &cdv->data.f, rkWrenchForce(w) );
+    if( cdp->data.cell[i] != cdv->data.cell )
+      zVec3DRevDRC( rkWrenchForce(w) );
+    rkWrenchListPush( &rkLinkABIPrp(cdp->data.cell[i]->data.link)->wlist, w );
+  }
+}
+
+/**************************************/
+/* penalty forces */
+void _rkFDContactPenalty_Vert(rkFD *fd, bool doUpRef)
 {
   rkCDPair *cdp;
+  rkCDVert *cdv;
+  zVec3D d, vr;
+
+  fd->colnum_e = 0;
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_ELASTIC ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      fd->colnum_e++;
+      zVec3DSub( cdv->data.vert, &cdv->data.ref, &d );
+      _rkFDChainPointRelativeVel( cdp, cdv->data.vert, &cdv->data.norm, cdv->data.cell, &vr );
+
+      /* penalty force */
+      zVec3DMul( &d, - rkContactInfoE(cdp->data.ci), &cdv->data.f );
+      zVec3DCatDRC( &cdv->data.f, -1.0*( rkContactInfoV(cdp->data.ci) + rkContactInfoE(cdp->data.ci) * rkFDDT(fd) ), &vr );
+      if( zVec3DInnerProd( &cdv->data.f, &cdv->data.axis[0] ) < 0.0 ) continue;
+
+      /* modify */
+      _rkFDContactModForceVert_Vert( fd, cdp, cdv, vr, rkFDDT(fd), doUpRef );
+      /* set wrench */
+      _rkFDContactSetWrench_Vert( cdp, cdv );
+    }
+  }
+}
+
+/**************************************/
+/* rigid contact */
+void _rkFDContactBiasAcc_Vert(rkFD *fd, zVec acc)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
   register int i;
   int offset = 0;
-  zVec3D vp, lvw, tempv;
-  zVec6D av[2], la;
+  zVec3D av;
 
-  _rkFDUpdateAcc( fd );
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    for( i=0; i<2; i++ ){
-      if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT ){
-        zVec6DClear( &av[i] );
-        continue;
-      }
-      zMulMatVec3D( rkLinkWldAtt( cdp->data.cell[i]->data.link ), zVec6DAng( rkLinkVel( cdp->data.cell[i]->data.link ) ), &lvw );
-      zMulMatVec6D( rkLinkWldAtt( cdp->data.cell[i]->data.link ), rkLinkAcc( cdp->data.cell[i]->data.link ), &la );
-      zVec6DCopy( &la, &av[i] );
-      zVec3DSub( ZVEC3DZERO, rkLinkWldPos( cdp->data.cell[i]->data.link ), &vp );
-      zVec3DTripleProd( &lvw, &lvw, &vp, &tempv );
-
-      zVec3DAddDRC( zVec6DLin(&av[i]), &tempv );
-      zVec3DOuterProd( zVec6DAng(&la), &vp, &tempv );
-      zVec3DAddDRC( zVec6DLin(&av[i]), &tempv );
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      _rkFDChainPointRelativeAcc( cdp, cdv->data.vert, cdv->data.cell, &av );
+      for( i=0; i<3; i++ )
+        zVecElem(acc,offset+i) = zVec3DInnerProd( &cdv->data.axis[i], &av );
+      offset += 3;
     }
-    zVec6DSubDRC( &av[0], &av[1] );
+  }
+}
 
-    zVec6DCopy( &av[0], (zVec6D *)&zVecElem(acc,offset) );
+void _rkFDContactRelativeAcc_Vert(rkFD *fd, rkCDPair *cp, zVec b, zVec a)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  int offset = 0;
+  zVec3D av;
+  register int i;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    if( cdp->data.cell[0]->data.chain != cp->data.cell[0]->data.chain &&
+        cdp->data.cell[0]->data.chain != cp->data.cell[1]->data.chain &&
+        cdp->data.cell[1]->data.chain != cp->data.cell[0]->data.chain &&
+        cdp->data.cell[1]->data.chain != cp->data.cell[1]->data.chain ){
+      for( i=0; i<zListNum(&cdp->data.vlist); i++ ){
+        zVec3DClear( (zVec3D *)&zVecElem(a,offset) );
+        offset += 3;
+      }
+    } else {
+      zListForEach( &cdp->data.vlist, cdv ){
+        _rkFDChainPointRelativeAcc( cdp, cdv->data.vert, cdv->data.cell, &av );
+        for( i=0; i<3; i++ )
+          zVecElem(a,offset+i) = zVec3DInnerProd( &cdv->data.axis[i], &av ) - zVecElem(b,offset+i);
+        offset += 3;
+      }
+    }
+  }
+}
+
+void _rkFDContactRelationAccForce_Vert(rkFD *fd, zMat a, zVec b)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  rkWrench *w[2];
+  register int i, j;
+  int offset = 0;
+  zVec t;
+
+  t = zVecAlloc( zVecSize( b ) );
+  w[0] = zAlloc( rkWrench, 1 );
+  w[1] = zAlloc( rkWrench, 1 );
+  /* b */
+  _rkFDUpdateAccBias( fd );
+  _rkFDContactBiasAcc_Vert( fd, b );
+  /* a */
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      for( i=0; i<3; i++ ){
+        for( j=0; j<2; j++ ){
+          rkWrenchInit( w[j] );
+          if( cdp->data.cell[j]->data.type == RK_CD_CELL_STAT ) continue;
+          zXfer3DInv( rkLinkWldFrame(cdp->data.cell[j]->data.link), cdv->data.vert, rkWrenchPos(w[j]) );
+          zMulMatTVec3D( rkLinkWldAtt(cdp->data.cell[j]->data.link), &cdv->data.axis[i], rkWrenchForce(w[j]) );
+          if( cdp->data.cell[j] != cdv->data.cell )
+            zVec3DRevDRC( rkWrenchForce(w[j]) );
+        }
+        _rkFDChainUpdateAccAddExForceTwo( cdp, w );
+        _rkFDContactRelativeAcc_Vert( fd, cdp, b, t );
+        zMatSetCol( a, offset+i, t );
+
+        /* restore ABIPrp */
+        _rkFDChainABIPopPrpExForceTwo( cdp, w );
+      }
+      offset += 3;
+    }
+  }
+
+  zFree( w[0] );
+  zFree( w[1] );
+  zVecFree( t );
+}
+
+void _rkFDContactBiasVel_Vert(rkFD *fd, zVec b)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  int offset = 0;
+  zVec3D vr;
+
+  zVecMulDRC( b, fd->dt );
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      _rkFDChainPointRelativeVel( cdp, cdv->data.vert, &cdv->data.norm, cdv->data.cell, &vr );
+      zVecElem(b,offset  ) += zVec3DInnerProd( &vr, &cdv->data.axis[0] );
+      zVecElem(b,offset+1) += zVec3DInnerProd( &vr, &cdv->data.axis[1] );
+      zVecElem(b,offset+2) += zVec3DInnerProd( &vr, &cdv->data.axis[2] );
+      offset += 3;
+    }
+  }
+}
+
+void _rkFDContactCompensateDepth_Vert(rkFD *fd, zVec b, zVec c)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  int offset = 0;
+  zVec3D d;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      zVec3DSub( cdv->data.vert, &cdv->data.ref, &d );
+      zVecElem(c,offset  ) = zVecElem(b,offset  ) + rkContactInfoK(cdp->data.ci)                                 * zVec3DInnerProd( &d, &cdv->data.axis[0] );
+      zVecElem(c,offset+1) = zVecElem(b,offset+1) + rkContactInfoK(cdp->data.ci) * rkContactInfoKF(cdp->data.ci) * zVec3DInnerProd( &d, &cdv->data.axis[1] );
+      zVecElem(c,offset+2) = zVecElem(b,offset+2) + rkContactInfoK(cdp->data.ci) * rkContactInfoKF(cdp->data.ci) * zVec3DInnerProd( &d, &cdv->data.axis[2] );
+      offset += 3;
+    }
+  }
+}
+
+void _rkFDContactSetForce_Vert(rkFD *fd, zVec f)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  int offset = 0;
+  register int i;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !cdp->data.is_col || rkContactInfoType(cdp->data.ci) != RK_CONTACT_RIGID ||
+       ( cdp->data.cell[0]->data.type == RK_CD_CELL_STAT &&
+         cdp->data.cell[1]->data.type == RK_CD_CELL_STAT ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      zVec3DClear( &cdv->data.f );
+      for( i=0; i<3; i++ ) zVec3DCatDRC( &cdv->data.f, zVecElem(f,offset+i), &cdv->data.axis[i] );
+      offset += 3;
+    }
+  }
+}
+
+void _rkFDContactSolveQP_Vert(rkFD *fd, zMat a, zVec b)
+{
+  zMat q, nf;
+  zVec c, d, f;
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  register int i;
+  int offset = 0;
+
+  nf = zMatAlloc( fd->colnum_r, 3*fd->colnum_r );
+  d = zVecAlloc( fd->colnum_r );
+  q = zMatAllocSqr( 3*fd->colnum_r );
+  c = zVecAlloc( 3*fd->colnum_r );
+  f = zVecAlloc( 3*fd->colnum_r );
+  /* unilateral constraint */
+  for( i=0; i<fd->colnum_r; i++ ){
+    zMatElem(nf,i,3*i) = 1.0;
+  }
+  /* QP */
+  zMulMatTMat( a, a, q );
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      for( i=0; i<3; i++ )
+        zMatElem(q,offset+i,offset+i) += rkContactInfoL(cdp->data.ci);
+      offset += 3;
+    }
+  }
+  _rkFDContactCompensateDepth_Vert( fd, b, c );
+  zMulMatTVecDRC( a, c );
+
+  /* solve */
+  zQPSolveASM( q, c, nf, d, f, NULL, NULL, NULL );
+  zVecDivDRC( f, fd->dt );
+  _rkFDContactSetForce_Vert( fd, f );
+
+  zMatFreeAO( 2, q, nf );
+  zVecFreeAO( 3, c, d, f );
+}
+
+void _rkFDContactRgidForce_Vert(rkFD *fd)
+{
+  zMat a;
+  zVec b;
+
+  a = zMatAllocSqr( 3*(fd->colnum_r) );
+  b = zVecAlloc( 3*(fd->colnum_r) );
+  _rkFDContactRelationAccForce_Vert( fd, a, b );
+  _rkFDContactBiasVel_Vert( fd, b );
+  _rkFDContactSolveQP_Vert( fd, a, b );
+  zMatFree( a );
+  zVecFree( b );
+}
+
+void _rkFDContactModRigidForce_Vert(rkFD *fd, bool doUpRef)
+{
+  rkCDPair *cdp;
+  rkCDVert *cdv;
+  zVec3D vr;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zListForEach( &cdp->data.vlist, cdv ){
+      _rkFDChainPointRelativeVel( cdp, cdv->data.vert, &cdv->data.norm, cdv->data.cell, &vr );
+      /* modify */
+      _rkFDContactModForceVert_Vert( fd, cdp, cdv, vr, rkFDDT(fd), doUpRef );
+      /* set wrench */
+      _rkFDContactSetWrench_Vert( cdp, cdv );
+    }
+  }
+}
+
+void _rkFDContactRgid_Vert(rkFD *fd, bool doUpRef)
+{
+  _rkFDUpdateRigidColFlag( fd );
+  _rkFDContactRgidForce_Vert( fd );
+  _rkFDContactModRigidForce_Vert( fd, doUpRef );
+}
+
+void rkFDSolveContact_Vert(rkFD *fd, bool doUpRef)
+{
+  /* update CD */
+  zEchoOff();
+  rkCDColChkVert( &fd->cd );
+  zEchoOn();
+  if( fd->cd.colnum == 0 ) return;
+  _rkFDContactPenalty_Vert( fd, doUpRef );
+  if( (fd->colnum_r = fd->cd.colnum - fd->colnum_e) == 0 ) return;
+  _rkFDContactRgid_Vert( fd, doUpRef );
+  return;
+}
+
+/* ************************************************************************** */
+/* the forward dynamics based on contact volume
+ * ************************************************************************** */
+void rkFDSetContactInfoDefault_Volume(rkFD *fd)
+{
+  rkContactInfoInit( &fd->_ci_def );
+  rkContactInfoSetType( &fd->_ci_def, RK_CONTACT_RIGID );
+  rkContactInfoSetK( &fd->_ci_def, 1000.0 );
+  rkContactInfoSetL( &fd->_ci_def, 0.001 );
+  rkContactInfoSetSF( &fd->_ci_def, 0.5 );
+  rkContactInfoSetKF( &fd->_ci_def, 0.3 );
+}
+
+/**************************************/
+/* penalty forces */
+void _rkFDContactPenalty_Volume(rkFD *fd, bool doUpRef)
+{
+  fd->colnum_e = 0;
+}
+
+/**************************************/
+/* rigid contact */
+/* ok */
+void _rkFDContactBiasAcc_Volume(rkFD *fd, zVec acc)
+{
+  rkCDPair *cdp;
+  int offset = 0;
+  zVec6D av;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    _rkFDChainPointRelativeAcc6D( cdp, &cdp->data.center, &av );
+    zVec6DCopy( &av, (zVec6D *)&zVecElem(acc,offset) );
     offset += 6;
   }
 }
 
-void _rkFDContactRelationAccForce_Volume(rkFD *fd, zMat A, zVec b)
+void _rkFDContactRelativeAcc_Volume(rkFD *fd, rkCDPair *cp, zVec b, zVec a)
 {
   rkCDPair *cdp;
-  rkWrench *w;
+  int offset = 0;
+  zVec6D av;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    if( cdp->data.cell[0]->data.chain != cp->data.cell[0]->data.chain &&
+        cdp->data.cell[0]->data.chain != cp->data.cell[1]->data.chain &&
+        cdp->data.cell[1]->data.chain != cp->data.cell[0]->data.chain &&
+        cdp->data.cell[1]->data.chain != cp->data.cell[1]->data.chain ){
+      zVec6DClear( (zVec6D *)&zVecElem(a,offset) );
+    } else {
+      _rkFDChainPointRelativeAcc6D( cdp, &cdp->data.center, &av );
+      zVec6DSub( &av, (zVec6D *)&zVecElem(b,offset), (zVec6D *)&zVecElem(a,offset) );
+    }
+    offset += 6;
+  }
+}
+
+void _rkFDContactRelationAccForce_Volume(rkFD *fd, zMat a, zVec b)
+{
+  rkCDPair *cdp;
+  rkWrench *w[2];
   register int i, j;
   int offset = 0;
   zVec t;
   zVec3D pos[2];
 
   t = zVecAlloc( zVecSize(b) );
+  w[0] = zAlloc( rkWrench, 1 );
+  w[1] = zAlloc( rkWrench, 1 );
   /* b */
-  _rkFDChainExtWrenchDestroy( fd );
-  _rkFDContactRelativeAcc_Volume( fd, b );
+  _rkFDUpdateAccBias( fd );
+  _rkFDContactBiasAcc_Volume( fd, b );
   /* A */
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    /* preprocess */
-    for( j=0; j<2; j++ ){
-      /* the original point of the inertial frame (with respect to the link
-         frame) is regarded as the point of application of contact force. */
-      if( cdp->data.cell[j]->data.type == RK_CD_CELL_STAT ) continue;
-      zXfer3DInv( rkLinkWldFrame(cdp->data.cell[j]->data.link), ZVEC3DZERO, &pos[j] );
-    }
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    /* let the origin be the center of contact volume */
+    for( j=0; j<2; j++ )
+      if( cdp->data.cell[j]->data.type != RK_CD_CELL_STAT )
+        zXfer3DInv( rkLinkWldFrame(cdp->data.cell[j]->data.link), &cdp->data.center, &pos[j] );
     for( i=0; i<6; i++ ){
       for( j=0; j<2; j++ ){
+        rkWrenchInit( w[j] );
         if( cdp->data.cell[j]->data.type == RK_CD_CELL_STAT ) continue;
-        w = zAlloc( rkWrench, 1 );
-        zListCellInit( w );
-        rkWrenchSetPos( w, &pos[j] );
-
-        rkWrenchSetW( w, ZVEC6DZERO );
-        zVec6DElem( rkWrenchW(w), i ) = 1.0;
-        if( i<3 ){ /* force */
-          zMulMatTVec3DDRC( rkLinkWldAtt(cdp->data.cell[j]->data.link), rkWrenchForce(w) );
-        } else{ /* torque */
-          zMulMatTVec3DDRC( rkLinkWldAtt(cdp->data.cell[j]->data.link), rkWrenchTorque(w) );
-        }
-        zVec6DMulDRC( rkWrenchW(w), j==0 ? 1.0 : -1.0 );
-        rkLinkExtWrenchPush( cdp->data.cell[j]->data.link, w );
+        rkWrenchSetPos( w[j], &pos[j] );
+        if( i<3 ) /* force */
+          zMat3DRow( rkLinkWldAtt(cdp->data.cell[j]->data.link), i, rkWrenchForce(w[j]) );
+        else /* torque */
+          zMat3DRow( rkLinkWldAtt(cdp->data.cell[j]->data.link), i-3, rkWrenchTorque(w[j]) );
+        if( j != 0 )
+          zVec6DRevDRC( rkWrenchW(w[j]) );
       }
-      /* calc acc */
-      _rkFDContactRelativeAcc_Volume( fd, t );
-      zVecSubDRC( t, b );
-      zMatSetCol( A, offset+i, t );
-      /* destroy */
-      _rkFDChainExtWrenchDestroy( fd );
+      _rkFDChainUpdateAccAddExForceTwo( cdp, w );
+      _rkFDContactRelativeAcc_Volume( fd, cdp, b, t );
+      zMatSetCol( a, offset+i, t );
+      /* restore ABIPrp */
+      _rkFDChainABIPopPrpExForceTwo( cdp, w );
     }
     offset += 6;
   }
+  zFree( w[0] );
+  zFree( w[1] );
   zVecFree( t );
 }
 
-void _rkFDContactVelAfterInt_Volume(rkFD *fd, zMat A, zVec b)
+void _rkFDContactBiasVel_Volume(rkFD *fd, zVec b)
 {
   rkCDPair *cdp;
-  register int i;
   int offset = 0;
-  zVec3D tempv;
-  zVec6D vv[2];
+  zVec6D vr;
 
   zVecMulDRC( b, fd->dt );
-  _rkFDUpdateAcc( fd );
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    for( i=0; i<2; i++){
-      if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
-        zVec6DClear( &vv[i] );
-      else{
-        zMulMatVec6D( rkLinkWldAtt(cdp->data.cell[i]->data.link), rkLinkVel(cdp->data.cell[i]->data.link), &vv[i] );
-        zVec3DSub( ZVEC3DZERO, rkLinkWldPos(cdp->data.cell[i]->data.link) ,&tempv );
-        zVec3DOuterProd( zVec6DAng(&vv[i]), &tempv, &tempv );
-        zVec3DAddDRC( zVec6DLin(&vv[i]), &tempv );
-      }
-    }
-    zVec6DSubDRC( &vv[0], &vv[1] );
-    zVec6DAddDRC( (zVec6D *)&zVecElem(b,offset), &vv[0] );
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    _rkFDChainPointRelativeVel6D( cdp, &cdp->data.center, &cdp->data.norm, &vr );
+    zVec6DAddDRC( (zVec6D *)&zVecElem(b,offset), &vr );
     offset += 6;
   }
 }
 
-void _rkFDContactConstraintGetMidDepth_Volume(double h[], rkContactInfo *ci, double s, double hm[], double *hc)
+/******************/
+void _rkFDContactConstraintMidDepth_Volume(double h[], rkContactInfo *ci, double s, double hm[], double *hc)
 {
   double k;
 
@@ -974,28 +1344,40 @@ void _rkFDContactConstraintGetMidDepth_Volume(double h[], rkContactInfo *ci, dou
   *hc   = k * ( h[0] + h[1] + h[2] ) * 2;
 }
 
-void _rkFDContactConstraintGetMidPoint_Volume(zVec3D p[], zVec3D pm[])
+void _rkFDContactConstraintMidPoint_Volume(zVec3D p[], zVec3D pm[])
 {
   zVec3DMid( &p[0], &p[1], &pm[0] );
   zVec3DMid( &p[1], &p[2], &pm[1] );
   zVec3DMid( &p[2], &p[0], &pm[2] );
 }
 
-void _rkFDContactConstraintDepth_Volume(zVec3D pm[], double hm[], double hc, zVec3D norm, zVec6D *c)
+void _rkFDContactConstraintAvePoint_Volume(zVec3D p[], double s, zVec3D *pc)
 {
-  register int i;
-  zVec3D tempv;
+  double k;
 
-  zVec3DMul( &norm, -hc, zVec6DLin(c) );
-  zVec3DClear( zVec6DAng(c) );
-  for( i=0; i<3; i++ ){
-    zVec3DMulDRC( &pm[i], hm[i] );
-    zVec3DOuterProd( &norm, &pm[i], &tempv );
-    zVec3DAddDRC( zVec6DAng(c), &tempv );
-  }
+  k = s / 3.0;
+  zVec3DElem(pc,0) = k * ( zVec3DElem(&p[0],0) + zVec3DElem(&p[1],0) + zVec3DElem(&p[2],0) );
+  zVec3DElem(pc,1) = k * ( zVec3DElem(&p[0],1) + zVec3DElem(&p[1],1) + zVec3DElem(&p[2],1) );
+  zVec3DElem(pc,2) = k * ( zVec3DElem(&p[0],2) + zVec3DElem(&p[1],2) + zVec3DElem(&p[2],2) );
 }
 
-double _rkFDContactConstrainGetArea(zVec3D p[])
+void _rkFDContactConstraintAveMat_Volume(zMat3D m[], double s, zMat3D *mc)
+{
+  double k;
+
+  k = s / 3.0;
+  zMat3DElem(mc,0,0) = k * ( zMat3DElem(&m[0],0,0) + zMat3DElem(&m[1],0,0) + zMat3DElem(&m[2],0,0) );
+  zMat3DElem(mc,0,1) = k * ( zMat3DElem(&m[0],0,1) + zMat3DElem(&m[1],0,1) + zMat3DElem(&m[2],0,1) );
+  zMat3DElem(mc,0,2) = k * ( zMat3DElem(&m[0],0,2) + zMat3DElem(&m[1],0,2) + zMat3DElem(&m[2],0,2) );
+  zMat3DElem(mc,1,0) = k * ( zMat3DElem(&m[0],1,0) + zMat3DElem(&m[1],1,0) + zMat3DElem(&m[2],1,0) );
+  zMat3DElem(mc,1,1) = k * ( zMat3DElem(&m[0],1,1) + zMat3DElem(&m[1],1,1) + zMat3DElem(&m[2],1,1) );
+  zMat3DElem(mc,1,2) = k * ( zMat3DElem(&m[0],1,2) + zMat3DElem(&m[1],1,2) + zMat3DElem(&m[2],1,2) );
+  zMat3DElem(mc,2,0) = k * ( zMat3DElem(&m[0],2,0) + zMat3DElem(&m[1],2,0) + zMat3DElem(&m[2],2,0) );
+  zMat3DElem(mc,2,1) = k * ( zMat3DElem(&m[0],2,1) + zMat3DElem(&m[1],2,1) + zMat3DElem(&m[2],2,1) );
+  zMat3DElem(mc,2,2) = k * ( zMat3DElem(&m[0],2,2) + zMat3DElem(&m[1],2,2) + zMat3DElem(&m[2],2,2) );
+}
+
+double _rkFDContactConstrainArea_Volume(zVec3D p[])
 {
   zVec3D e1, e2;
 
@@ -1004,22 +1386,59 @@ double _rkFDContactConstrainGetArea(zVec3D p[])
   return 0.5 * zVec3DOuterProdNorm( &e1, &e2 );
 }
 
-bool _rkFDContactConstraintGetSlice_Volume(zVec3D p[], double h[], zVec3D pp[])
+void _rkFDContactConstraintAddQ_Volume(zVec3D p[], zVec3D pm[], double s, zMat6D *q)
 {
-  double c[2];
+  register int i;
+  zVec3D pc;
+  zMat3D mm[3], tmpm;
 
-  c[0] = h[1] - h[0];
-  c[1] = h[2] - h[0];
-  if( zIsTiny( c[0] ) || zIsTiny( c[1] ) ) return false;
-  zVec3DMul( &p[0], h[1] / c[0], &pp[0] );
-  zVec3DCatDRC( &pp[0], -h[0] / c[0], &p[1] );
-  zVec3DMul( &p[0], h[2] / c[1], &pp[1] );
-  zVec3DCatDRC( &pp[1], -h[0] / c[1], &p[2] );
-  h[1] = h[2] = 0;
-  return true;
+  _rkFDContactConstraintAvePoint_Volume( p, s, &pc );
+  zMat3DMul( ZMAT3DIDENT, s, &tmpm );
+  zMat3DAddDRC( zMat6DMat3D(q,0,0), &tmpm );
+  zVec3DOuterProdMat3D( &pc, &tmpm );
+  zMat3DAddDRC( zMat6DMat3D(q,1,0), &tmpm );
+  zMat3DSubDRC( zMat6DMat3D(q,0,1), &tmpm );
+  for( i=0; i<3; i++ ) zVec3DOuterProd2Mat3D( &pm[i], &pm[i], &mm[i] );
+  _rkFDContactConstraintAveMat_Volume( mm, s, &tmpm );
+  zMat3DSubDRC( zMat6DMat3D(q,1,1), &tmpm );
 }
 
-void _rkFDContactConstraintGetInnerPoint_Volume(zVec3D *p1, zVec3D *p2, double h1, double h2, zVec3D *pp)
+void _rkFDContactConstraintDepth_Volume(zVec3D pm[], double h[], rkContactInfo *ci, double s, zVec3D norm, zVec6D *c)
+{
+  register int i;
+  double hm[3], hc;
+  zVec3D tmpv;
+
+  _rkFDContactConstraintMidDepth_Volume( h, ci, s, hm, &hc );
+  zVec3DMul( &norm, -hc, zVec6DLin(c) );
+  zVec3DClear( zVec6DAng(c) );
+  for( i=0; i<3; i++ ){
+    zVec3DMulDRC( &pm[i], hm[i] );
+    zVec3DOuterProd( &norm, &pm[i], &tmpv );
+    zVec3DAddDRC( zVec6DAng(c), &tmpv );
+  }
+}
+
+void _rkFDContactConstraintSignDepth_Volume(double h[], int *st, int stp[])
+{
+  register int i;
+
+  *st = 0;
+  stp[0] = stp[1] = stp[2] = 0;
+  for( i=0; i<3; i++ ){
+    if( h[i] > zTOL ){
+      *st += 1<<(i*2);
+      stp[1] = i;
+    } else if( h[i] < -zTOL ){
+      *st += 1<<(i*2+1);
+      stp[2] = i;
+    } else{
+      stp[0] = i;
+    }
+  }
+}
+
+void _rkFDContactConstraintInnerPoint_Volume(zVec3D *p1, zVec3D *p2, double h1, double h2, zVec3D *pp)
 {
   /* for safety */
   if( zIsTiny( h1 ) ){
@@ -1041,19 +1460,22 @@ void _rkFDContactConstraintGetInnerPoint_Volume(zVec3D *p1, zVec3D *p2, double h
 void _rkFDContactSetContactPlane_Volume(rkCDPair *cdp, zVec3D *p, zVec3D *norm)
 {
   rkCDPlane *cdpl, *cdpl2;
-  zVec3D tempv;
+  zVec3D tmpv;
 
-  zVec3DCat( norm, -zVec3DInnerProd( norm, &cdp->data.norm ), &cdp->data.norm, &tempv );
-  if( zVec3DIsTiny( &tempv ) ) return;
+  zVec3DCat( norm, -zVec3DInnerProd( norm, &cdp->data.norm ), &cdp->data.norm, &tmpv );
+  if( zVec3DIsTiny( &tmpv ) ) return;
   cdpl = zAlloc( rkCDPlane, 1 );
   zVec3DCopy( p, &cdpl->data.v );
-  zVec3DDiv( &tempv, -zVec3DNorm( &tempv ) , &cdpl->data.norm );
+  zVec3DDiv( &tmpv, -zVec3DNorm( &tmpv ) , &cdpl->data.norm );
 
   /* to eliminate identical conditions */
-  /* NOTE: this is O(n^2) and might be able to be O(n) */
   zListForEach( &cdp->data.cplane, cdpl2 ){
-    if( zVec3DIsTol( zVec3DSub( &cdpl->data.norm, &cdpl2->data.norm, &tempv ), 1e-8 ) &&
-        zIsTol( zVec3DInnerProd( &cdpl->data.norm, zVec3DSub( &cdpl2->data.v, &cdpl->data.v, &tempv ) ), 1e-8 ) ){
+    if( zVec3DIsTol( zVec3DSub( &cdpl->data.norm, &cdpl2->data.norm, &tmpv ), 1e-8 ) &&
+        zIsTol( zVec3DInnerProd( &cdpl->data.norm, zVec3DSub( &cdpl2->data.v, &cdpl->data.v, &tmpv ) ), 1e-8 ) ){
+      zVec3DOuterProd( &cdpl->data.norm, &tmpv, &tmpv );
+      if( zVec3DInnerProd( &cdp->data.norm, &tmpv ) > 0.0 ){
+        zVec3DCopy( &cdpl->data.v, &cdpl2->data.v );
+      }
       zFree( cdpl );
       return;
     }
@@ -1061,550 +1483,611 @@ void _rkFDContactSetContactPlane_Volume(rkCDPair *cdp, zVec3D *p, zVec3D *norm)
   zListInsertHead( &cdp->data.cplane, cdpl );
 }
 
-void _rkFDContactConstraint_Volume(rkFD *fd, rkCDPair *cdp, rkContactInfo *ci, zMat6D *Q, zVec6D *C)
+int __rk_fd_plane_cmp(void *p1, void *p2, void *priv)
+{
+  zVec3D *a, *n, tmp;
+  double th1, th2;
+
+  n = (zVec3D *)priv;
+  a = (zVec3D *)priv + 1;
+  zVec3DOuterProd( a, &((rkCDPlane *)p1)->data.norm, &tmp );
+  if( zVec3DInnerProd( &tmp, n ) > 0 )
+    th1 = atan2( -zVec3DNorm( &tmp ), zVec3DInnerProd( a, &((rkCDPlane *)p1)->data.norm ) );
+  else
+    th1 = atan2(  zVec3DNorm( &tmp ), zVec3DInnerProd( a, &((rkCDPlane *)p1)->data.norm ) );
+  zVec3DOuterProd( a, &((rkCDPlane *)p2)->data.norm, &tmp );
+  if( zVec3DInnerProd( &tmp, n ) > 0 )
+    th2 = atan2( -zVec3DNorm( &tmp ), zVec3DInnerProd( a, &((rkCDPlane *)p2)->data.norm ) );
+  else
+    th2 = atan2(  zVec3DNorm( &tmp ), zVec3DInnerProd( a, &((rkCDPlane *)p2)->data.norm ) );
+  if( zIsTiny( th1 - th2 ) ) return 0;
+  return th1 > th2 ? 1: -1;
+}
+
+void _rkFDContactConstraint_Volume(rkFD *fd, rkCDPair *cdp, rkContactInfo *ci, zMat6D *q, zVec6D *c)
 {
   register int i, j;
   zTri3D *face;
-  double h[3], hm[3], hc, S;
-  zVec3D p[3], pm[3], pp[2], pc, tempv;
-  zMat3D mmo[3], tempm;
-  zVec6D Cc;
+  double h[3], s;
+  zVec3D pf[3], p[3], pm[3], pp[2];
+  zVec6D cc;
   int stp[3], st;
 
-  zMat6DClear( Q );
-  zVec6DClear( C );
-
+  zMat6DClear( q );
+  zVec6DClear( c );
   for( i=0; i<zPH3DFaceNum(&cdp->data.colvol); i++ ){
-    face = zPH3DFace( &cdp->data.colvol, i );
+    face = zPH3DFace(&cdp->data.colvol,i);
     for( j=0; j<3; j++ ){
-      zVec3DSub( zTri3DVert(face,j), &cdp->data.center, &tempv );
-      h[j] = zVec3DInnerProd( &cdp->data.norm, &tempv );
+      zVec3DSub( zTri3DVert(face,j), &cdp->data.center, &pf[j] );
+      h[j] = zVec3DInnerProd( &cdp->data.norm, &pf[j] );
+      zVec3DCat( &pf[j], -h[j], &cdp->data.norm, &p[j] );
     }
-    for( j=0; j<3; j++ ){
-      zVec3DCat( zTri3DVert(face,j), -h[j], &cdp->data.norm, &p[j] );
-    }
-    S = _rkFDContactConstrainGetArea( p );
-    _rkFDContactConstraintGetMidDepth_Volume( h, ci, S, hm, &hc );
-    _rkFDContactConstraintGetMidPoint_Volume( p, pm );
-    zVec3DAdd( &p[0], &p[1], &pc );
-    zVec3DAddDRC( &pc, &p[2] );
-    zVec3DDivDRC( &pc, 3.0 );
+    _rkFDContactConstraintMidPoint_Volume( p, pm );
+    s = _rkFDContactConstrainArea_Volume( p );
+    _rkFDContactConstraintAddQ_Volume( p, pm, s, q ); /* q */
+    _rkFDContactConstraintDepth_Volume( pm, h, ci, s, cdp->data.norm, &cc ); /* c */
 
-    /* Q : needs pm, pc and S */
-    zMat3DMul( ZMAT3DIDENT, S, &tempm );
-    zMat3DAddDRC( zMat6DMat3D( Q, 0, 0 ), &tempm );
-    zVec3DMulDRC( &pc, S );
-    zVec3DOuterProdMat3D( &pc, &tempm );
-    zMat3DAddDRC( zMat6DMat3D(Q,1,0), &tempm );
-    zMat3DSubDRC( zMat6DMat3D(Q,0,1), &tempm );
-    for( j=0; j<3; j++ )
-      zVec3DOuterProd2Mat3D( &pm[j], &pm[j], &mmo[j] );
-    zMat3DAdd( &mmo[0], &mmo[1], &tempm );
-    zMat3DAddDRC( &tempm, &mmo[2] );
-    zMat3DMulDRC( &tempm, S / 3.0 );
-    zMat3DSubDRC( zMat6DMat3D(Q,1,1), &tempm );
-    /* C */
-    _rkFDContactConstraintDepth_Volume( pm, hm, hc, cdp->data.norm, &Cc );
     /* a process dependent on signum of h */
-    st = 0;
-    stp[0] = stp[1] = stp[2] = 0;
-    for( j=0; j<3; j++ ){
-      if( h[j] > zTOL ){
-        st += 1<<(j*2);
-        stp[1] = j;
-      } else if( h[j] < -zTOL ){
-        st += 1<<(j*2+1);
-        stp[2] = j;
-      } else{
-        stp[0] = j;
-      }
-    }
+    _rkFDContactConstraintSignDepth_Volume( h, &st, stp );
     switch( st ){
-    case 0x01: case 0x04: case 0x10:  /* 00上 */
-      _rkFDContactSetContactPlane_Volume( cdp, zTri3DVert(face,stp[0]), zTri3DNorm(face) );
-    case 0x05: case 0x11: case 0x14: case 0x15: /* 0上上, 上上上 */
-      zVec6DAddDRC( C, &Cc );
+    case 0x01: case 0x04: case 0x10: /* two points are on the plane and one point is above it */
+    case 0x05: case 0x11: case 0x14: /* one point is on the plane and two points are above it */
+      _rkFDContactSetContactPlane_Volume( cdp, &pf[stp[0]], zTri3DNorm(face) );
+    case 0x15: /* all points are above the plane */
+      zVec6DAddDRC( c, &cc );
       continue;
-    case 0x02: case 0x08: case 0x20: /* 00下 */
-      _rkFDContactSetContactPlane_Volume( cdp, zTri3DVert(face,stp[0]), zTri3DNorm(face) );
-    case 0x0a: case 0x22: case 0x28: case 0x2a: /* すべて負 */
-      zVec6DSubDRC( C, &Cc );
+    case 0x02: case 0x08: case 0x20: /* two points are on the line and one point is below it */
+    case 0x0a: case 0x22: case 0x28: /* one point is on the line and two points are below it */
+      _rkFDContactSetContactPlane_Volume( cdp, &pf[stp[0]], zTri3DNorm(face) );
+    case 0x2a: /* all points are below the plane */
+      zVec6DSubDRC( c, &cc );
       continue;
-    case 0x24: /* 0上下 */
-    case 0x12: /* 下0上 */
-    case 0x09: /* 上下0 */
-      zVec6DAddDRC( C, &Cc );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[1]), zTri3DVert(face,stp[2]), h[stp[1]], h[stp[2]], &p[stp[1]] );
+    case 0x24: /* 0:on    1:above 2:below */
+    case 0x12: /* 0:below 1:on    2:above */
+    case 0x09: /* 0:above 1:below 2:on    */
+      zVec6DAddDRC( c, &cc );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[1]], &pf[stp[2]], h[stp[1]], h[stp[2]], &p[stp[1]] );
       h[stp[1]] = 0.0;
       zVec3DCopy( &p[stp[0]], &pp[0] );
       zVec3DCopy( &p[stp[1]], &pp[1] );
       break;
-    case 0x06: /* 下上0 */
-    case 0x21: /* 上0下 */
-    case 0x18: /* 0下上 */
-      zVec6DAddDRC( C, &Cc );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[1]), zTri3DVert(face,stp[2]), h[stp[1]], h[stp[2]], &p[stp[2]] );
+    case 0x06: /* 0:below 1:above 2:on    */
+    case 0x21: /* 0:above 1:on    2:below */
+    case 0x18: /* 0:on    1:below 2:above */
+      zVec6DAddDRC( c, &cc );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[1]], &pf[stp[2]], h[stp[1]], h[stp[2]], &p[stp[2]] );
       h[stp[2]] = 0.0;
       zVec3DCopy( &p[stp[2]], &pp[0] );
       zVec3DCopy( &p[stp[0]], &pp[1] );
       break;
-    case 0x16: /* 下上上 */
-    case 0x19: /* 上下上 */
-    case 0x25: /* 上上下 */
+    case 0x16:case 0x19:case 0x25: /* two points are above the plane and one point is below it */
       stp[0] = (stp[2]+1) % 3;
       stp[1] = (stp[0]+1) % 3;
-      zVec6DAddDRC( C, &Cc );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[2]), zTri3DVert(face,stp[0]), h[stp[2]], h[stp[0]], &p[stp[0]] );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[2]), zTri3DVert(face,stp[1]), h[stp[2]], h[stp[1]], &p[stp[1]] );
+      zVec6DAddDRC( c, &cc );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[2]], &pf[stp[0]], h[stp[2]], h[stp[0]], &p[stp[0]] );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[2]], &pf[stp[1]], h[stp[2]], h[stp[1]], &p[stp[1]] );
       h[stp[0]] = h[stp[1]] = 0.0;
       zVec3DCopy( &p[stp[0]], &pp[0] );
       zVec3DCopy( &p[stp[1]], &pp[1] );
       break;
-    case 0x1a: /* 下下上 */
-    case 0x26: /* 下上下 */
-    case 0x29: /* 上下下 */
+    case 0x1a:case 0x26:case 0x29: /* two points are below the plane and one point is above it */
       stp[0] = (stp[1]+1) % 3;
       stp[2] = (stp[0]+1) % 3;
-      zVec6DSubDRC( C, &Cc );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[1]), zTri3DVert(face,stp[0]), h[stp[1]], h[stp[0]], &p[stp[0]] );
-      _rkFDContactConstraintGetInnerPoint_Volume( zTri3DVert(face,stp[1]), zTri3DVert(face,stp[2]), h[stp[1]], h[stp[2]], &p[stp[2]] );
+      zVec6DSubDRC( c, &cc );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[1]], &pf[stp[0]], h[stp[1]], h[stp[0]], &p[stp[0]] );
+      _rkFDContactConstraintInnerPoint_Volume( &pf[stp[1]], &pf[stp[2]], h[stp[1]], h[stp[2]], &p[stp[2]] );
       h[stp[0]] = h[stp[2]] = 0.0;
       zVec3DCopy( &p[stp[2]], &pp[0] );
       zVec3DCopy( &p[stp[0]], &pp[1] );
       break;
-    default: /* 面上 */
+    default: /* all points are on the plane */
       continue;
     }
-    S = _rkFDContactConstrainGetArea( p );
-    _rkFDContactConstraintGetMidDepth_Volume( h, ci, S, hm, &hc );
-    _rkFDContactConstraintGetMidPoint_Volume( p, pm );
-    _rkFDContactConstraintDepth_Volume( pm, hm, hc, cdp->data.norm, &Cc );
+    s = _rkFDContactConstrainArea_Volume( p );
+    _rkFDContactConstraintMidPoint_Volume( p, pm );
+    _rkFDContactConstraintDepth_Volume( pm, h, ci, s, cdp->data.norm, &cc );
     switch( st ){
     case 0x1a: case 0x26: case 0x29:
-      zVec6DCatDRC( C, 2.0, &Cc );
+      zVec6DCatDRC( c, 2.0, &cc );
       break;
     default:
-      zVec6DCatDRC( C, -2.0, &Cc );
+      zVec6DCatDRC( c, -2.0, &cc );
     }
     /* register pp */
     _rkFDContactSetContactPlane_Volume( cdp, &pp[0], zTri3DNorm(face) );
   }
+  /* sort plane list */
+  rkCDPlaneListQuickSort( &cdp->data.cplane, __rk_fd_plane_cmp, cdp->data.axis );
 }
 
-void _rkFDContactModForce_Volume(rkFD *fd, bool doUpRef)
-{
-  rkCDPair *cdp;
-  rkContactInfo *ci;
-  zVec3D vr, vv[2], tempv, s;
-  zVec6D v6;
-  register int i;
-  double fn, fs;
-
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-    if( !ci ) ci = &_rkFDContactInfoDefault;
-
-    /* v */
-    for( i=0; i<2; i++ ){
-      if( cdp->data.cell[i]->data.type == RK_CD_CELL_STAT )
-        zVec3DClear( &vv[i] );
-      else{
-        zMulMatVec6D( rkLinkWldAtt(cdp->data.cell[i]->data.link), rkLinkVel(cdp->data.cell[i]->data.link), &v6 );
-        zVec3DSub( &cdp->data.r, rkLinkWldPos(cdp->data.cell[i]->data.link) ,&tempv );
-        zVec3DOuterProd( zVec6DAng(&v6), &tempv, &tempv );
-        zVec3DAdd( zVec6DLin(&v6), &tempv, &vv[i] );
-      }
-    }
-    zVec3DSub( &vv[0], &vv[1], &vr );
-    zVec3DCatDRC( &vr, -zVec3DInnerProd( &vr, &cdp->data.norm ), &cdp->data.norm );
-    if( zVec3DIsTiny( &vr ) ) zVec3DClear( &vr );
-    else zVec3DNormalizeNCDRC( &vr );
-
-    /* friction */
-    fn = zVec3DInnerProd( &cdp->data.f, &cdp->data.norm );
-    zVec3DCat( &cdp->data.f, -fn, &cdp->data.norm, &s );
-    fs = zVec3DNorm( &s );
-    if( !zIsTiny( fs ) && fs > rkContactInfoSF(ci) * fn ){
-      zVec3DMul( &vr, -rkContactInfoKF(ci)*fn, &cdp->data.f );
-      zVec3DCatDRC( &cdp->data.f, fn, &cdp->data.norm );
-    }
-  }
-}
-
-void _rkFDContactSetForceF_Volume(rkFD *fd, zVec f)
+/******************/
+void _rkFDContactSetForce_Volume(rkFD *fd, zVec f)
 {
   rkCDPair *cdp;
   int offset =  0;
 
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    zVec3DCopy( (zVec3D *)&zVecElem(f,offset), &cdp->data.f );
-    if( zVec3DIsTiny( &cdp->data.f ) || zIsTiny( zVec3DInnerProd( &cdp->data.f, &cdp->data.norm ) ) ){
-      zVec3DClear( &cdp->data.f );
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    if( zListNum(&cdp->data.cplane) == 0 ){
+      zVec6DClear( zVec6DLin(&cdp->data.f) );
+      continue;
     }
-    offset += 3;
-  }
-}
-
-void _rkFDContactSetForceR_Volume(rkFD *fd, zVec r)
-{
-  rkCDPair *cdp;
-  int offset =  0;
-
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    zVec3DCopy( &cdp->data.center, &cdp->data.r );
-    zVec3DCatDRC( &cdp->data.r, zVecElem(r,offset  ), &cdp->data.axis[1] );
-    zVec3DCatDRC( &cdp->data.r, zVecElem(r,offset+1), &cdp->data.axis[2] );
-    offset += 2;
+    zVec6DCopy( (zVec6D *)&zVecElem(f,offset), &cdp->data.f );
+    if( zVec3DIsTiny( zVec6DLin(&cdp->data.f) ) || zVec3DInnerProd( zVec6DLin(&cdp->data.f), &cdp->data.norm ) < zTOL ){
+      zVec6DClear( zVec6DLin(&cdp->data.f) );
+    }
+    offset += 6;
   }
 }
 
 zVec _rkFDContactSolveConstraintInit_Volume(zMat a, zVec b, zVec ans, void *util){
+  rkCDPair *cdp;
+  register int offset = 0;
+
   zVecClear( ans );
+  zListForEach( &((rkFD *)util)->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    /* normal forces initial offset */
+    zVec3DMul( &cdp->data.norm, 1.0, (zVec3D *)&zVecElem(ans,offset) );
+    offset += 6;
+  }
   return ans;
 }
 
-void _rkFDContactSolveConstraintQc4F_Volume(rkFD *fd, zMat Q, zVec c, zMat Qr, zVec cr)
+void _rkFDContactSolveConstraint_Volume(rkFD *fd, zMat a, zVec b)
 {
-  rkCDPair *cdp, *cdp2;
-  zMat6D Qcell;
-  zMat3D Qp, r1, r2, tempm;
-  zVec3D tempv;
-  register int i, j;
-  int ii, jj;
-
-  ii = 0;
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    jj = 0;
-    /* Qr */
-    zListForEach( &fd->cd.plist, cdp2 ){
-      if( !cdp2->data.is_col ) continue;
-      for( i=0; i<6; i++ ){
-        for( j=0; j<6; j++ ){
-          zMat6DElem(&Qcell,i,j) = zMatElem(Q,6*ii+i,6*jj+j);
-        }
-      }
-      zMat3DCopy( zMat6DMat3D(&Qcell,0,0), &Qp );
-      zVec3DOuterProdMat3D( &cdp->data.r, &r1 );
-      zMulMatMat3D( &r1, zMat6DMat3D(&Qcell,1,0), &tempm );
-      zMat3DSubDRC( &Qp, &tempm );
-      zVec3DOuterProdMat3D( &cdp2->data.r, &r2 );
-      zMulMatMat3D( zMat6DMat3D(&Qcell,0,1), &r2, &tempm );
-      zMat3DAddDRC( &Qp, &tempm );
-      zMulMatMat3D( zMat6DMat3D(&Qcell,1,1), &r2, &tempm );
-      zMulMatMat3D( &r1, &tempm, &tempm );
-      zMat3DSubDRC( &Qp, &tempm );
-      for( i=0; i<3; i++ )
-        for( j=0; j<3; j++ )
-          zMatElem(Qr,3*ii+i,3*jj+j) = zMat3DElem(&Qp,i,j);
-      jj++;
-    }
-    /* cr */
-    zVec3DOuterProd( (zVec3D *)&zVecElem(c,6*ii+3), &cdp->data.r, &tempv );
-    zVec3DAdd( (zVec3D *)&zVecElem(c,6*ii), &tempv, (zVec3D *)&zVecElem(cr,3*ii) );
-    ii++;
-  }
-}
-
-void _rkFDContactSolveConstraintQc4R_Volume(rkFD *fd, zMat Q, zVec c, zMat Qr, zVec cr)
-{
-  rkCDPair *cdp, *cdp2;
-  zMat3D Qcell, Qcell2;
-  zVec3D d1[2], d2[2], tempv, tempv2;
-  register int i, j;
-  int ii, jj, iq, jq;
-
-  ii = iq = 0;
-  zVecClear( cr );
-  zListForEach( &fd->cd.plist, cdp ){
-  if( !cdp->data.is_col ) continue;
-    if( zListNum(&cdp->data.cplane) == 0 ){
-      ii++;
-      continue;
-    }
-    jj = jq = 0;
-    /* Qr */
-    zVec3DOuterProd( &cdp->data.axis[1], &cdp->data.f, &d1[0] );
-    zVec3DOuterProd( &cdp->data.axis[2], &cdp->data.f, &d1[1] );
-    zVec3DMulDRC( &d1[0], fd->dt );
-    zVec3DMulDRC( &d1[1], fd->dt );
-    zListForEach( &fd->cd.plist, cdp2 ){
-      if( !cdp2->data.is_col ) continue;
-      if( zListNum(&cdp2->data.cplane) == 0 ){
-        jj++;
-        continue;
-      }
-      for( i=0; i<3; i++ )
-        for( j=0; j<3; j++ )
-          zMat3DElem(&Qcell,i,j) = zMatElem(Q,6*ii+3+i,6*jj+3+j);
-      zVec3DOuterProd( &cdp2->data.axis[1], &cdp2->data.f, &d2[0] );
-      zVec3DOuterProd( &cdp2->data.axis[2], &cdp2->data.f, &d2[1] );
-      zVec3DMulDRC( &d2[0], fd->dt );
-      zVec3DMulDRC( &d2[1], fd->dt );
-      for( i=0; i<2; i++ )
-        for( j=0; j<2; j++ ){
-          zMulMatVec3D( &Qcell, &d2[j], &tempv );
-          zMatElem(Qr,2*iq+i,2*jq+j) = zVec3DInnerProd( &d1[i], &tempv );
-        }
-      /* cr */
-      for( i=0; i<3; i++ )
-        for( j=0; j<3; j++ )
-          zMat3DElem(&Qcell2,i,j) = zMatElem(Q,6*ii+3+i,6*jj+j);
-      zVec3DOuterProd( &cdp2->data.center, &cdp2->data.f, &tempv );
-      zVec3DMulDRC( &tempv, fd->dt );
-      zMulMatVec3DDRC( &Qcell, &tempv );
-      zMulMatVec3D( &Qcell2, &cdp2->data.f, &tempv2 );
-      zVec3DMulDRC( &tempv2, fd->dt );
-      zVec3DAddDRC( &tempv, &tempv2 );
-
-      zVecElem(cr,2*iq  ) += zVec3DInnerProd( &tempv, &d1[0] );
-      zVecElem(cr,2*iq+1) += zVec3DInnerProd( &tempv, &d1[1] );
-      jj++;
-      jq++;
-    }
-    /* cr */
-    zVecElem(cr,2*iq  ) += zVec3DInnerProd( (zVec3D *)&zVecElem(c,6*ii+3), &d1[0] );
-    zVecElem(cr,2*iq+1) += zVec3DInnerProd( (zVec3D *)&zVecElem(c,6*ii+3), &d1[1] );
-    ii++;
-    iq++;
-  }
-}
-
-void _rkFDContactSolveConstraint_Volume(rkFD *fd, zMat A, zVec b)
-{
-  zMat Q, Qf, Qr, Nf, Nr;
-  zVec c, cf, cr, df, dr, f, fp, r, rp;
-  zMat6D Qv;
-  zVec6D Cv, tempv;
+  zMat q, nf;
+  zVec c, df, f;
+  zMat6D qv;
+  zVec6D cv, tmpv;
   rkCDPair *cdp;
   rkCDPlane *cdpl;
-  rkContactInfo *ci;
   register int i, j;
-  int offset = 0, cnt = 0;
-  int m, n;
+  int offset = 0, pvertn = 0;
 
-  Q = zMatAllocSqr( 6*fd->cd.colnum );
-  c = zVecAlloc( 6*fd->cd.colnum );
-  zMatClear( Q );
-  zVecClear( c );
+  /* evaluation function */
+  q  = zMatAllocSqr( 6*fd->colnum_r );
+  c  = zVecAlloc( 6*fd->colnum_r );
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-    if( !ci ) ci = &_rkFDContactInfoDefault;
-    _rkFDContactConstraint_Volume( fd, cdp, ci, &Qv, &Cv );
-    /* Q */
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    _rkFDContactConstraint_Volume( fd, cdp, cdp->data.ci, &qv, &cv );
+    /* q */
     for( i=0; i<6; i++ )
       for( j=0; j<6; j++ )
-        zRawMatCatDyad( zMatBuf(Q), zMat6DElem(&Qv,i,j), zMatRowBuf(A,offset+i), zMatColSizeNC(A), zMatRowBuf(A,offset+j), zMatColSizeNC(A) );
+        zRawMatCatDyad( zMatBuf(q), zMat6DElem(&qv,i,j), zMatRowBuf(a,offset+i), zMatColSizeNC(a), zMatRowBuf(a,offset+j), zMatColSizeNC(a) );
     /* c */
-    zMulMat6DVec6D( &Qv, (zVec6D *)&zVecElem(b,offset), &tempv );
-    zVec6DAddDRC( &Cv, &tempv );
+    zMulMat6DVec6D( &qv, (zVec6D *)&zVecElem(b,offset), &tmpv );
+    zVec6DAddDRC( &cv, &tmpv );
     for( i=0; i<6; i++ )
-      zRawVecCatDRC( zVecBuf(c), zVec6DElem(&Cv,i), zMatRowBuf(A,offset+i), zMatColSizeNC(A) );
+      zRawVecCatDRC( zVecBuf(c), zVec6DElem(&cv,i), zMatRowBuf(a,offset+i), zMatColSizeNC(a) );
+    offset += 6;
+    pvertn += zListNum(&cdp->data.cplane);
+  }
+
+  /* constraint */
+  nf = zMatAlloc( fd->colnum_r+pvertn, 6*fd->colnum_r );
+  df = zVecAlloc( fd->colnum_r+pvertn );
+  f  = zVecAlloc( 6*fd->colnum_r );
+  i = j = 0;
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    zVec3DCopy( &cdp->data.norm, (zVec3D *)&zMatElem(nf,i++,j) );
+    zListForEach( &cdp->data.cplane, cdpl ){
+      zVec3DMul( &cdp->data.norm, -zVec3DInnerProd( &cdpl->data.norm, &cdpl->data.v ), (zVec3D *)&zMatElem(nf,i,j) );
+      zVec3DMul( &cdp->data.axis[1],  zVec3DInnerProd( &cdpl->data.norm, &cdp->data.axis[2] ), (zVec3D *)&zMatElem(nf,i,j+3) );
+      zVec3DCatDRC( (zVec3D *)&zMatElem(nf,i,j+3), -zVec3DInnerProd( &cdpl->data.norm, &cdp->data.axis[1] ), &cdp->data.axis[2] );
+      i++;
+    }
+    j += 6;
+  }
+  /* relaxation */
+  offset = 0;
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    for( i=0; i<6; i++ )
+      zMatElem(q,offset+i,offset+i) += rkContactInfoL(cdp->data.ci);
     offset += 6;
   }
-  /* iterative computation of force and moment arm r */
-  /* preprocess */
-  /* f */
-  Qf = zMatAllocSqr( 3*fd->cd.colnum );
-  cf = zVecAlloc( 3*fd->cd.colnum );
-  Nf = zMatAlloc( fd->cd.colnum, 3*fd->cd.colnum );
-  df = zVecAlloc( fd->cd.colnum );
-  f  = zVecAlloc( 3*fd->cd.colnum );
-  fp = zVecAlloc( 3*fd->cd.colnum );
 
-  i = m = n = 0;
-  zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
-    zVec3DCopy( &cdp->data.center, &cdp->data.r );
-    zVec3DCopy( &cdp->data.norm, (zVec3D *)&zMatElem(Nf,i,3*i) );
-    i++;
-    m += zListNum( &cdp->data.cplane );
-    if( zListNum(&cdp->data.cplane) != 0 ) n++;
-  }
-  /* r */
-  if( m != 0 ){
-    /* 接触しているが断面が得られない場合の自由度は消す */
-    Qr = zMatAllocSqr( 2*n );
-    cr = zVecAlloc( 2*n );
-    Nr = zMatAlloc( m, 2*n );
-    dr = zVecAlloc( m );
-    r  = zVecAlloc( 2*n );
-    rp = zVecAlloc( 2*n );
+  /* solve qp */
+  zQPSolveASM( q, c, nf, df, f, NULL, _rkFDContactSolveConstraintInit_Volume, fd );
+  zVecDivDRC( f, fd->dt );
+  _rkFDContactSetForce_Volume( fd, f );
 
-    i = j = 0;
-    zListForEach( &fd->cd.plist, cdp ){
-      if( !cdp->data.is_col || zListNum(&cdp->data.cplane) == 0 ) continue;
-      zListForEach( &cdp->data.cplane, cdpl ){
-        zMatElem(Nr,i,2*j  ) = zVec3DInnerProd( &cdpl->data.norm, &cdp->data.axis[1] );
-        zMatElem(Nr,i,2*j+1) = zVec3DInnerProd( &cdpl->data.norm, &cdp->data.axis[2] );
-        zVecElem(dr,i) = zVec3DInnerProd( &cdpl->data.norm, &cdpl->data.v ) - zVec3DInnerProd( &cdpl->data.norm, &cdp->data.center );
-        /* for safety */
-        if( zVecElem(dr,i) > 0.0 ){
-          zMatElem(Nr,i,2*j  ) *= -1.0;
-          zMatElem(Nr,i,2*j+1) *= -1.0;
-          zVecElem(dr,i) *= -1.0;
-        }
-        i++;
-      }
-      j++;
-    }
-  }
-  /* iteration */
-  while( 1 ){
-    /* f */
-    _rkFDContactSolveConstraintQc4F_Volume( fd, Q, c, Qf, cf );
-    offset = 0;
-    zListForEach( &fd->cd.plist, cdp ){
-      if( !cdp->data.is_col ) continue;
-      ci = rkContactInfoPoolAssoc( &fd->ci, rkLinkStuff(cdp->data.cell[0]->data.link), rkLinkStuff(cdp->data.cell[1]->data.link) );
-      if( !ci ) ci = &_rkFDContactInfoDefault;
-      for( i=0; i<3; i++ )
-        zMatElem(Qf,offset+i,offset+i) += rkContactInfoL(ci);
-      offset += 3;
-    }
-    zQPSolveASM( Qf, cf, Nf, df, f, NULL, NULL, NULL );
-    zVecDivDRC( f, fd->dt );
-
-    if( m == 0 || cnt++ > RK_FD_SOLVE_ITER ) break;
-    if( zVecIsEqual( f, fp ) && zVecIsEqual( r, rp ) ) break;
-    zVecCopy( f, fp );
-    zVecCopy( r, rp );
-
-    /* correction of friction force */
-    _rkFDContactModForce_Volume( fd, false );
-    _rkFDContactSetForceF_Volume( fd, f );
-
-    /* r */
-    _rkFDContactSolveConstraintQc4R_Volume( fd, Q, c, Qr, cr );
-    zQPSolveASM( Qr, cr, Nr, dr, r, NULL, _rkFDContactSolveConstraintInit_Volume, NULL );
-    _rkFDContactSetForceR_Volume( fd, r );
-  }
-
-  zMatFreeAO( 3, Q, Qf, Nf );
-  zVecFreeAO( 5, c, cf, df, f, fp );
-  if( m != 0 ){
-    zMatFreeAO( 2, Qr, Nr );
-    zVecFreeAO( 4, cr, dr, r, rp );
-  }
+  zMatFreeAO( 2, q, nf );
+  zVecFreeAO( 3, c, df, f );
 }
 
-void _rkFDContactCalcForce_Volume(rkFD *fd)
+void _rkFDContactRigidForce_Volume(rkFD *fd)
 {
-  zMat A;
+  zMat a;
   zVec b;
 
-  A = zMatAllocSqr( 6*(fd->cd.colnum) );
-  b = zVecAlloc( 6*(fd->cd.colnum) );
-  _rkFDContactRelationAccForce_Volume( fd, A, b );
-  _rkFDContactVelAfterInt_Volume( fd, A, b );
-  _rkFDContactSolveConstraint_Volume( fd, A, b );
-  zMatFree( A );
+  a = zMatAllocSqr( 6*(fd->colnum_r) );
+  b = zVecAlloc( 6*(fd->colnum_r) );
+  _rkFDContactRelationAccForce_Volume( fd, a, b );
+  _rkFDContactBiasVel_Volume( fd, b );
+  _rkFDContactSolveConstraint_Volume( fd, a, b );
+  zMatFree( a );
   zVecFree( b );
 }
 
-void _rkFDContactSetWrench(rkFD *fd)
+/******************/
+/* for safety */
+/* NOTE:
+ * the ASM solver does not work well occasionally.
+ * in that case, the solution does not meet the constraints with respect to normal force.
+ * before the friction modification, the solution is projected inside the constraints with a small margin.
+ */
+void _rkFDContactModNormForceCenterTrq_Volume(rkCDPair *cdp, zVec3D *r, double fn)
+{
+  zVec3DMul( &cdp->data.norm, zVec3DInnerProd( &cdp->data.norm, zVec6DAng(&cdp->data.f) ), zVec6DAng(&cdp->data.f) );
+  zVec3DCatDRC( zVec6DAng(&cdp->data.f),  fn * zVec3DInnerProd( &cdp->data.axis[2], r ), &cdp->data.axis[1] );
+  zVec3DCatDRC( zVec6DAng(&cdp->data.f), -fn * zVec3DInnerProd( &cdp->data.axis[1], r ), &cdp->data.axis[2] );
+}
+
+void _rkFDContactModNormForceCenter_Volume(rkFD *fd)
+{
+  rkCDPair *cdp;
+  rkCDPlane *cdpl[4];
+  zVec3D r0, r, dir, tmp;
+  double fn, d, s;
+  bool flag = false;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    /* unilateral constraint */
+    fn = zVec3DInnerProd( &cdp->data.norm, zVec6DLin(&cdp->data.f) );
+    if( fn < zTOL ) continue;
+
+    zVec3DMul( &cdp->data.axis[1], -zVec3DInnerProd( &cdp->data.axis[2], zVec6DAng(&cdp->data.f) ) / fn, &r0 );
+    zVec3DCatDRC( &r0, zVec3DInnerProd( &cdp->data.axis[1], zVec6DAng(&cdp->data.f) ) / fn, &cdp->data.axis[2] );
+		flag = false;
+    cdpl[2] = zListHead( &cdp->data.cplane );
+    cdpl[1] = zListCellPrev( cdpl[2] );
+    cdpl[0] = zListCellPrev( cdpl[1] );
+    for( cdpl[3]=zListTail(&cdp->data.cplane); cdpl[3]!=zListRoot(&cdp->data.cplane);
+         cdpl[0]=cdpl[1],cdpl[1]=cdpl[2],cdpl[2]=cdpl[3],cdpl[3]=zListCellNext(cdpl[3]) ){
+      zVec3DSub( &cdpl[2]->data.v, &cdpl[1]->data.v, &dir );
+      d = zVec3DSqrNorm( &dir );
+      if( zIsTiny( d ) ) continue;
+      zVec3DSub( &r0, &cdpl[1]->data.v, &tmp );
+      if( zVec3DInnerProd( &tmp, &cdpl[1]->data.norm ) > zTOL ) continue;
+      s = zVec3DInnerProd( &dir, &tmp ) / d;
+      if( s < zTOL ){
+        if( flag ) break;
+        /* r: cdpl[1]->data.v */
+        zVec3DSub( &cdpl[0]->data.v, &cdpl[1]->data.v, &tmp );
+        zVec3DAddDRC( &tmp, &dir );
+        zVec3DCat( &cdpl[1]->data.v, zTOL / zVec3DNorm( &tmp ), &tmp, &r );
+        _rkFDContactModNormForceCenterTrq_Volume( cdp, &r, fn );
+        break;
+      } else if ( s < 1.0-zTOL ){
+        /* r: projected position */
+        zVec3DCat( &cdpl[1]->data.v, s, &dir, &r );
+        zVec3DCatDRC( &r, zTOL, &cdpl[1]->data.norm );
+        _rkFDContactModNormForceCenterTrq_Volume( cdp, &r, fn );
+        break;
+      } else {
+        /* r: cdpl[2]->data.v */
+        zVec3DSub( &cdpl[3]->data.v, &cdpl[2]->data.v, &tmp );
+        zVec3DSubDRC( &tmp, &dir );
+        zVec3DCat( &cdpl[2]->data.v, zTOL / zVec3DNorm( &tmp ), &tmp, &r );
+        _rkFDContactModNormForceCenterTrq_Volume( cdp, &r, fn );
+        flag = true;
+      }
+    }
+  }
+}
+
+/******************/
+void _rkFDContactPlaneVertPos_Volume(rkCDPair *cdp, double *tl)
+{
+  rkCDPlane *cdpl;
+  double rl;
+
+  *tl = 0.0;
+  zListForEach( &cdp->data.cplane, cdpl ){
+    cdpl->data.r[0] = zVec3DInnerProd( &cdpl->data.v, &cdp->data.axis[1] );
+    cdpl->data.r[1] = zVec3DInnerProd( &cdpl->data.v, &cdp->data.axis[2] );
+    if( *tl < (rl = zVec2DNorm( cdpl->data.r )) )
+      *tl = rl;
+  }
+}
+
+void _rkFDContactModWrenchStaticConstraint_Volume(rkCDPair *cdp, int n, zVec6D *w, zMat a, zVec b)
+{
+  rkCDPlane *cdpl;
+  double th;
+  register int i;
+  int offset = 0;
+
+  zListForEach( &cdp->data.cplane, cdpl ){
+    for( i=0,th=0.0; i<n; i++ ){
+      zMatElem(a,0,offset+i) = 1.0;
+      zMatElem(a,1,offset+i) = cdpl->data.r[1];
+      zMatElem(a,2,offset+i) = -cdpl->data.r[0];
+      zMatElem(a,3,offset+i) = rkContactInfoSF(cdp->data.ci)*cos(th);
+      zMatElem(a,4,offset+i) = rkContactInfoSF(cdp->data.ci)*sin(th);
+      zMatElem(a,5,offset+i) = -(zMatElem(a,2,offset+i)*zMatElem(a,4,offset+i) + zMatElem(a,1,offset+i)*zMatElem(a,3,offset+i));
+      th += 2.0 * zPI / (double)n;
+    }
+    offset += n;
+  }
+  zVecElem(b,0) = zVec6DElem(w,0);
+  zVecElem(b,1) = zVec6DElem(w,4);
+  zVecElem(b,2) = zVec6DElem(w,5);
+  zVecElem(b,3) = zVec6DElem(w,1);
+  zVecElem(b,4) = zVec6DElem(w,2);
+  zVecElem(b,5) = zVec6DElem(w,3);
+}
+
+bool _rkFDContactModWrenchStatic_Volume(rkFD *fd, rkCDPair *cdp, zVec6D *w, zMat a, zVec b, zVec f)
+{
+  bool ret;
+
+  /* constraint */
+  _rkFDContactModWrenchStaticConstraint_Volume( cdp, fd->_pyramid, w, a, b );
+  zEchoOff();
+  ret = zLPFeasibleBase( a, b, f );
+  zEchoOn();
+  return ret;
+}
+
+void _rkFDContactModWrenchKineticConstraint_Volume(rkCDPair *cdp, zVec6D *w, zMat a, zVec b)
+{
+  rkCDPlane *cdpl;
+  int offset = 0;
+
+  zListForEach( &cdp->data.cplane, cdpl ){
+    zMatElem(a,0,offset) = 1.0;
+    zMatElem(a,1,offset) = cdpl->data.r[1];
+    zMatElem(a,2,offset) = -cdpl->data.r[0];
+    offset++;
+  }
+  zVecElem(b,0) = zVec6DElem(w,0);
+  zVecElem(b,1) = zVec6DElem(w,4);
+  zVecElem(b,2) = zVec6DElem(w,5);
+}
+
+void _rkFDContactPlaneVertSlideDir_Volume(rkFD *fd, rkCDPair *cdp, rkCDPlane *cdpl)
+{
+  zVec3D p, v;
+  double nv, w;
+
+  zVec3DAdd( &cdp->data.center, &cdpl->data.v, &p );
+  _rkFDChainPointRelativeVel( cdp, &p, &cdp->data.norm, cdp->data.cell[0], &v );
+  zVec3DCatDRC( &v, -zVec3DInnerProd( &cdp->data.norm, &v ), &cdp->data.norm );
+  nv = zVec3DNorm( &v );
+  if( zIsTiny( nv ) ){
+    cdpl->data.s[0] = 0.0;
+    cdpl->data.s[1] = 0.0;
+  } else {
+    w = _rkFDKineticFrictionWeight( fd, nv ) * rkContactInfoKF(cdp->data.ci) / nv;
+    cdpl->data.s[0] = -w * zVec3DInnerProd( &v, &cdp->data.axis[1] );
+    cdpl->data.s[1] = -w * zVec3DInnerProd( &v, &cdp->data.axis[2] );
+  }
+}
+
+void _rkFDContactModWrenchKineticTotal_Volume(rkCDPair *cdp, zVec f, zVec6D *w)
+{
+  rkCDPlane *cdpl;
+  int offset = 0;
+  zVec2D fs;
+
+  zVec3DClear( (zVec3D *)&zVec6DElem(w,1) );
+  zListForEach( &cdp->data.cplane, cdpl ){
+    zVec2DMul( cdpl->data.s, zVecElem(f,offset), fs );
+    zVec6DElem(w,1) += fs[0];
+    zVec6DElem(w,2) += fs[1];
+    zVec6DElem(w,3) += cdpl->data.r[0] * fs[1] - cdpl->data.r[1] * fs[0];
+    offset++;
+  }
+}
+
+void _rkFDContactModWrenchKinetic_Volume(rkFD *fd, rkCDPair *cdp, zVec6D *w, zMat a, zVec b, zVec f)
+{
+  rkCDPlane *cdpl;
+  zVec c;
+  int offset = 0;
+  double wn[3];
+  register int i;
+
+  /* constraint */
+  _rkFDContactModWrenchKineticConstraint_Volume( cdp, w, a, b );
+  /* evaluation function */
+  c = zVecAlloc( zListNum(&cdp->data.cplane) );
+  for( i=0; i<3; i++ )
+    if( !zIsTiny( zVec6DElem(w,i+1) ) )
+      wn[i] = 1.0 / zVec6DElem(w,i+1);
+    else
+      wn[i] = 0.0;
+  zListForEach( &cdp->data.cplane, cdpl ){
+    _rkFDContactPlaneVertSlideDir_Volume( fd, cdp, cdpl );
+    zVecElem(c,offset) = -wn[0] * cdpl->data.s[0] - wn[1] * cdpl->data.s[1] -
+      wn[2] * ( cdpl->data.r[0] * cdpl->data.s[1] - cdpl->data.r[1] * cdpl->data.s[0] );
+    offset++;
+  }
+
+  zEchoOff();
+  if( !zLPSolveSimplex( a, b, c, f, NULL ) ){
+    /* for safety */
+    zMatSetSize( a, 1, zListNum(&cdp->data.cplane) );
+    zVecSetSize( b, 1 );
+    for( i=0; i<2; i++ )
+      if( !zIsTiny( zVec6DElem(w,i+3) ) )
+        wn[i] = 1.0 / zVec6DElem(w,i+3);
+      else
+        wn[i] = 0.0;
+    offset = 0;
+    zListForEach( &cdp->data.cplane, cdpl ){
+      _rkFDContactPlaneVertSlideDir_Volume( fd, cdp, cdpl );
+      zVecElem(c,offset) += wn[0] * cdpl->data.r[0] - wn[1] * cdpl->data.r[1];
+      offset++;
+    }
+    zLPSolveSimplex( a, b, c, f, NULL );
+  }
+  /* zLPSolvePDIP_PC( a, b, c, f, NULL ); */
+  zEchoOn();
+
+  _rkFDContactModWrenchKineticTotal_Volume( cdp, f, w );
+  zVecFree( c );
+}
+
+void _rkFDContactModWrenchKineticCenter_Volume(rkFD *fd, rkCDPair *cdp, zVec6D *w)
+{
+  zVec3D v;
+  double nv, tmpd;
+
+  _rkFDChainPointRelativeVel( cdp, &cdp->data.center, &cdp->data.norm, cdp->data.cell[0], &v );
+  zVec3DCatDRC( &v, -zVec3DInnerProd( &cdp->data.norm, &v ), &cdp->data.norm );
+  nv = zVec3DNorm( &v );
+  if( zIsTiny( nv ) ){
+    zVec6DElem(w,1) = 0.0;
+    zVec6DElem(w,2) = 0.0;
+  } else {
+    tmpd = _rkFDKineticFrictionWeight( fd, nv ) * rkContactInfoKF(cdp->data.ci) * zVec6DElem(w,0) / nv;
+    zVec6DElem(w,1) = -tmpd * zVec3DInnerProd( &v, &cdp->data.axis[1] );
+    zVec6DElem(w,2) = -tmpd * zVec3DInnerProd( &v, &cdp->data.axis[2] );
+  }
+}
+
+/* if this function's overhead is large, this function should be expanded */
+void _rkFDContactModWrenchSetKinetic_Volume(rkCDPair *cdp, bool doUpRef)
+{
+  if( doUpRef ){
+    cdp->data.type = RK_CONTACT_KF;
+    /* this version doesn't use the reference frame */
+    /* zFrame3DCopy( rkLinkWldFrame(cdp->data.cell[0]->data.link), &cdp->data.ref[0] ); */
+    /* zFrame3DCopy( rkLinkWldFrame(cdp->data.cell[1]->data.link), &cdp->data.ref[1] ); */
+  }
+}
+
+void _rkFDContactModWrenchSetStatic_Volume(rkCDPair *cdp, bool doUpRef)
+{
+  if( doUpRef ){
+    cdp->data.type = RK_CONTACT_SF;
+  }
+}
+
+void _rkFDContactModWrenchSetForce_Volume(rkCDPair *cdp, zVec6D *w)
+{
+  register int i;
+
+  zVec6DClear( &cdp->data.f );
+  for( i=0; i<3; i++ ){
+    zVec3DCatDRC( zVec6DLin(&cdp->data.f), zVec6DElem(w,i  ), &cdp->data.axis[i] );
+    zVec3DCatDRC( zVec6DAng(&cdp->data.f), zVec6DElem(w,i+3), &cdp->data.axis[i] );
+  }
+}
+
+void _rkFDContactModWrench_Volume(rkFD *fd, bool doUpRef)
+{
+  rkCDPair *cdp;
+  zVec6D w;
+  double fn, fs, tl;
+  register int i;
+  zMat a;
+  zVec b, f;
+
+  zListForEach( &fd->cd.plist, cdp ){
+    if( !rkFDCDPairIsContactInfoType( cdp, RK_CONTACT_RIGID ) ) continue;
+    if( zListIsEmpty(&cdp->data.cplane) ) continue;
+    if( zIsTiny( zVec3DInnerProd( zVec6DLin(&cdp->data.f), &cdp->data.axis[0] ) ) ) continue;
+    for( i=0; i<3; i++ ){
+      zVec6DElem(&w,i  ) = zVec3DInnerProd( zVec6DLin(&cdp->data.f), &cdp->data.axis[i] );
+      zVec6DElem(&w,i+3) = zVec3DInnerProd( zVec6DAng(&cdp->data.f), &cdp->data.axis[i] );
+    }
+    /* friction */
+    fn = zVec6DElem(&w,0);
+    fs = sqrt( zSqr( zVec6DElem(&w,1) ) + zSqr( zVec6DElem(&w,2) ) );
+    _rkFDContactPlaneVertPos_Volume( cdp, &tl );
+    if( zIsTiny( tl ) ){
+      /* the plane is too small */
+      zVec3DClear( zVec6DAng(&w) );
+      if( !zIsTiny( fs ) && fs > rkContactInfoSF(cdp->data.ci) * fn ){
+        _rkFDContactModWrenchKineticCenter_Volume( fd, cdp, &w );
+        _rkFDContactModWrenchSetKinetic_Volume( cdp, doUpRef );
+      } else
+        _rkFDContactModWrenchSetStatic_Volume( cdp, doUpRef );
+      _rkFDContactModWrenchSetForce_Volume( cdp, &w );
+      continue;
+    }
+    /* rectangular constraint: for reducing allocated memory */
+    if( (!zIsTiny( fs ) && fs > rkContactInfoSF(cdp->data.ci) * fn) ||
+        fabs(zVec6DElem(&w,3)) > tl * zVec6DElem(&w,0) ){
+      /* workspace */
+      a = zMatAlloc( 3, zListNum(&cdp->data.cplane) );
+      b = zVecAlloc( 3 );
+      f = zVecAlloc( zListNum(&cdp->data.cplane) );
+      _rkFDContactModWrenchKinetic_Volume( fd, cdp, &w, a, b, f );
+      _rkFDContactModWrenchSetForce_Volume( cdp, &w );
+      _rkFDContactModWrenchSetKinetic_Volume( cdp, doUpRef );
+    } else {
+      /* workspace */
+      a = zMatAlloc( 6, fd->_pyramid * zListNum(&cdp->data.cplane) );
+      b = zVecAlloc( 6 );
+      f = zVecAlloc( fd->_pyramid * zListNum(&cdp->data.cplane) );
+      if( !_rkFDContactModWrenchStatic_Volume( fd, cdp, &w, a, b, f ) ){
+        /* reuse momory of mat a, vec b, f */
+        zMatSetSize( a, 3, zListNum(&cdp->data.cplane) );
+        zVecSetSize( b, 3 );
+        zVecSetSize( f, zListNum(&cdp->data.cplane) );
+        _rkFDContactModWrenchKinetic_Volume( fd, cdp, &w, a, b, f );
+        _rkFDContactModWrenchSetKinetic_Volume( cdp, doUpRef );
+        _rkFDContactModWrenchSetForce_Volume( cdp, &w );
+      } else
+        _rkFDContactModWrenchSetStatic_Volume( cdp, doUpRef );
+    }
+
+    zMatFree( a );
+    zVecFreeAO( 2, b, f );
+  }
+}
+
+/******************/
+void _rkFDContactSetWrench_Volume(rkFD *fd)
 {
   rkCDPair *cdp;
   rkWrench *w;
   register int i;
 
   zListForEach( &fd->cd.plist, cdp ){
-    if( !cdp->data.is_col ) continue;
+    if( !cdp->data.is_col || rkContactInfoType(cdp->data.ci) != RK_CONTACT_RIGID ) continue;
     for( i=0; i<2; i++ ){
       w = zAlloc( rkWrench, 1 );
       rkWrenchInit( w );
-      zXfer3DInv( rkLinkWldFrame(cdp->data.cell[i]->data.link), &cdp->data.r, rkWrenchPos(w) );
-      zMulMatTVec3D( rkLinkWldAtt(cdp->data.cell[i]->data.link), &cdp->data.f, rkWrenchForce(w) );
-      rkLinkExtWrenchPush( cdp->data.cell[i]->data.link, w );
-      zVec3DRevDRC( &cdp->data.f );
+      zXfer3DInv( rkLinkWldFrame(cdp->data.cell[i]->data.link), &cdp->data.center, rkWrenchPos(w) );
+      zMulMatTVec6D( rkLinkWldAtt(cdp->data.cell[i]->data.link), &cdp->data.f, rkWrenchW(w) );
+      if( i == 1 )
+        zVec6DRevDRC( rkWrenchW(w) );
+      rkWrenchListPush( &rkLinkABIPrp(cdp->data.cell[i]->data.link)->wlist, w );
     }
   }
 }
 
-void _rkFDSolveJointContact_Volume(rkFD *fd, bool doUpRef)
+void _rkFDContactRgid_Volume(rkFD *fd, bool doUpRef)
+{
+  _rkFDUpdateRigidColFlag( fd );
+  _rkFDContactRigidForce_Volume( fd );
+  _rkFDContactModNormForceCenter_Volume( fd );
+  _rkFDContactModWrench_Volume( fd, doUpRef );
+  _rkFDContactSetWrench_Volume( fd );
+}
+
+void rkFDSolveContact_Volume(rkFD *fd, bool doUpRef)
 {
   /* update CD */
   zEchoOff();
   rkCDColVolBREP( &fd->cd );
   zEchoOn();
-
-  /* compute joint friction */
-  _rkFDJointCalcFriction( fd, doUpRef );
   if( fd->cd.colnum == 0 ) return;
-  /* compute contact force */
-  _rkFDContactCalcForce_Volume( fd );
-  /* modify contact force */
-  _rkFDContactModForce_Volume( fd, doUpRef );
-  _rkFDContactSetWrench( fd );
+  _rkFDContactPenalty_Volume( fd, doUpRef );
+  if( (fd->colnum_r = fd->cd.colnum - fd->colnum_e) == 0 ) return;
+  _rkFDContactRgid_Volume( fd, doUpRef );
 }
 
-zVec _rkFDUpdate_Volume(double t, zVec dis, zVec vel, void *fd, zVec acc)
-{
-  zVecClear( acc );
-  _rkFDChainConnectJointState( fd, dis, vel, acc );
-  _rkFDChainExtWrenchDestroy( fd );
-
-  _rkFDSolveJointContact_Volume( fd, false );
-  zVecClear( acc );
-  _rkFDUpdateAcc( fd );
-  return acc;
-}
-
-void _rkFDUpdateRef_Volume(rkFD *fd)
-{
-  zVecClear( fd->acc );
-  _rkFDChainConnectJointState( fd, fd->dis, fd->vel, fd->acc );
-  _rkFDChainExtWrenchDestroy( fd );
-
-  _rkFDSolveJointContact_Volume( fd, true );
-  _rkFDUpdateAcc( fd );
-  zVecClear( fd->acc );
-  _rkFDUpdateRefDrivingTorque( fd );
-}
-
-/* rkFDSolve
- * - solve the forward dynamics.
- */
-rkFD *rkFDSolve_Volume(rkFD *fd)
-{
-  if( zIsTiny( fd->t ) ) _rkFDJointRefInit( fd );
-  /* reference */
-  _rkFDUpdateRef_Volume( fd );
-
-  /* integration */
-  zODE2Init( &fd->_ode, zVecSize(fd->dis), fd->_ode_step, _rkFDUpdate_Volume );
-  zODE2Update( &fd->_ode, fd->t, fd->dis, fd->vel, fd->dt, fd );
-  zODE2Destroy( &fd->_ode );
-  fd->t += fd->dt;
-  /* calc acc */
-  _rkFDUpdate_Volume( fd->t, fd->dis, fd->vel, fd, fd->acc );
-  return fd;
-}
-
-void rkFDUpdateInit_Volume(rkFD *fd)
-{
-  zODE2Init( &fd->_ode, zVecSize(fd->dis), fd->_ode_step, _rkFDUpdate_Volume );
-  _rkFDJointRefInit( fd );
-  _rkFDUpdateRef_Volume( fd );
-}
-
-rkFD *rkFDUpdate_Volume(rkFD *fd)
-{
-  zODE2Update( &fd->_ode, fd->t, fd->dis, fd->vel, fd->dt, fd );
-  fd->t += fd->dt;
-  _rkFDUpdateRef_Volume( fd );
-  return fd;
-}
-
-void rkFDUpdateDestroy_Volume(rkFD *fd)
-{
-  zODE2Destroy( &fd->_ode );
-}
-
+/******************************************************************************/
 /* for debug */
 void rkFDWrite(rkFD *fd)
 {

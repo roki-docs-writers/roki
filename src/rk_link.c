@@ -29,6 +29,7 @@ void rkLinkInit(rkLink *l)
   rkLinkSetChild( l, NULL );
   rkLinkSetSibl( l, NULL );
 
+  l->_bprp = NULL;
   l->_util = NULL;
 }
 
@@ -38,6 +39,7 @@ void rkLinkInit(rkLink *l)
 void rkLinkDestroy(rkLink *l)
 {
   zNameDestroy( l );
+  zFree( l->_bprp );
   rkJointDestroy( rkLinkJoint(l) );
   rkLinkExtWrenchDestroy( l );
   rkLinkShapeDestroy( l );
@@ -107,6 +109,19 @@ zVec3D *rkLinkPointVel(rkLink *l, zVec3D *p, zVec3D *v)
   return zVec3DAddDRC( v, rkLinkLinVel(l) );
 }
 
+/* rkLinkPointAcc
+ * - calculate accerelation of a point with respect to the inertial frame.
+ */
+zVec3D *rkLinkPointAcc(rkLink *l, zVec3D *p, zVec3D *a)
+{
+  zVec3D tmp;
+
+  zVec3DTripleProd( rkLinkAngVel(l), rkLinkAngVel(l), p, a );
+  zVec3DOuterProd( rkLinkAngAcc(l), p, &tmp );
+  zVec3DAddDRC( a, &tmp );
+  return zVec3DAddDRC( a, rkLinkLinAcc(l) );
+}
+
 /* rkLinkWldInertia
  * - compute inertia tensor of a link with respect to the inertial frame.
  */
@@ -130,15 +145,29 @@ void rkLinkUpdateFrame(rkLink *l, zFrame3D *pwf)
     rkLinkUpdateFrame( rkLinkSibl(l), rkLinkWldFrame(rkLinkParent(l)) );
 }
 
-/* rkLinkUpdateRate
- * - update link motion rate with respect to the inertial frame.
- */
-void rkLinkUpdateRate(rkLink *l, zVec6D *pvel, zVec6D *pacc)
+void _rkLinkUpdateVel(rkLink *l, zVec6D *pvel)
+{
+  /* velocity */
+  zXfer6DLin( rkLinkAdjFrame(l), pvel, rkLinkVel(l) );
+  /* joint motion rate */
+  rkJointIncVel( rkLinkJoint(l), rkLinkVel(l) );
+  /* COM velocity and acceleration */
+  rkBodyUpdateCOMVel( rkLinkBody(l) );
+}
+
+void rkLinkUpdateVel(rkLink *l, zVec6D *pvel)
+{
+  _rkLinkUpdateVel( l, pvel );
+  if( rkLinkChild(l) )
+    rkLinkUpdateVel( rkLinkChild(l), rkLinkVel(l) );
+  if( rkLinkSibl(l) )
+    rkLinkUpdateVel( rkLinkSibl(l), rkLinkVel(rkLinkParent(l)) );
+}
+
+void _rkLinkUpdateAcc(rkLink *l, zVec6D *pvel, zVec6D *pacc)
 {
   zVec3D wp, tmp;
 
-  /* velocity */
-  zXfer6DLin( rkLinkAdjFrame(l), pvel, rkLinkVel(l) );
   /* acceleration */
   zVec6DLinShift( pacc, rkLinkAdjPos(l), rkLinkAcc(l) );
   zVec3DOuterProd( zVec6DAng(pvel), rkLinkAdjPos(l), &wp );
@@ -147,10 +176,28 @@ void rkLinkUpdateRate(rkLink *l, zVec6D *pvel, zVec6D *pacc)
   zMulMatTVec6DDRC( rkLinkAdjAtt(l), rkLinkAcc(l) );
   /* joint motion rate */
   zVec3DCopy( rkLinkAngVel(l), &tmp );
-  rkJointIncRate( rkLinkJoint(l), &tmp, rkLinkVel(l), rkLinkAcc(l) );
+  rkJointIncAccOnVel( rkLinkJoint(l), &tmp, rkLinkAcc(l) );
+  rkJointIncAcc( rkLinkJoint(l), rkLinkAcc(l) );
   /* COM velocity and acceleration */
-  rkBodyUpdateCOMRate( rkLinkBody(l) );
+  rkBodyUpdateCOMAcc( rkLinkBody(l) );
+}
 
+void rkLinkUpdateAcc(rkLink *l, zVec6D *pvel, zVec6D *pacc)
+{
+  _rkLinkUpdateAcc( l, pvel, pacc );
+  if( rkLinkChild(l) )
+    rkLinkUpdateAcc( rkLinkChild(l), rkLinkVel(l), rkLinkAcc(l) );
+  if( rkLinkSibl(l) )
+    rkLinkUpdateAcc( rkLinkSibl(l), rkLinkVel(rkLinkParent(l)), rkLinkAcc(rkLinkParent(l)) );
+}
+
+/* rkLinkUpdateRate
+ * - update link motion rate with respect to the inertial frame.
+ */
+void rkLinkUpdateRate(rkLink *l, zVec6D *pvel, zVec6D *pacc)
+{
+  _rkLinkUpdateVel( l, pvel );
+  _rkLinkUpdateAcc( l, pvel, pacc );
   if( rkLinkChild(l) )
     rkLinkUpdateRate( rkLinkChild(l), rkLinkVel(l), rkLinkAcc(l) );
   if( rkLinkSibl(l) )
@@ -281,6 +328,14 @@ bool _rkLinkFRead(FILE *fp, void *instance, char *buf, bool *success)
       return ( *success = false );
     }
     rkLinkShapePush( prm->l, sp );
+  } else if( strcmp( buf, "break" ) == 0 ){
+    if( !(prm->l->_bprp = zAlloc( rkBreakPrp, 1 )) ){
+      ZALLOCERROR();
+      return ( *success = false );
+    }
+    prm->l->_bprp->is_broken = false;
+    prm->l->_bprp->ep_f = zFDouble( fp );
+    prm->l->_bprp->ep_t = zFDouble( fp );
   } else if( !rkJointQueryFRead( fp, buf, rkLinkJoint(prm->l), prm->marray, prm->nm ) )
     return false;
   return true;
@@ -319,6 +374,7 @@ void rkLinkFWrite(FILE *fp, rkLink *l)
   fprintf( fp, "jointtype: %s\n", rkJointTypeExpr( rkLinkJointType(l) ) );
   rkJointFWrite( fp, rkLinkJoint(l), NULL );
   rkMPFWrite( fp, rkLinkMP(l) );
+  if( rkLinkStuff(l) ) fprintf( fp, "stuff: %s\n", rkLinkStuff(l) );
   fprintf( fp, "frame: " );
   zFrame3DFWrite( fp, rkLinkOrgFrame(l) );
   if( !rkLinkShapeIsEmpty(l) )
@@ -326,6 +382,8 @@ void rkLinkFWrite(FILE *fp, rkLink *l)
       fprintf( fp, "shape: %s\n", zName( zShapeListCellShape(cp) ) );
   if( rkLinkParent(l) )
     fprintf( fp, "parent: %s\n", zName( rkLinkParent(l) ) );
+  if( rkLinkBreakPrp(l) )
+    fprintf( fp, "break: %f %f\n", rkLinkBreakPrp(l)->ep_f, rkLinkBreakPrp(l)->ep_t );
   fprintf( fp, "\n" );
 }
 

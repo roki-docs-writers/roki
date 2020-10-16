@@ -66,7 +66,6 @@ typedef struct{
 } rkJointRef;
 
 typedef struct{
-  byte size; /* number of joint components */
   /* joint value manipulation function */
   void (*_limdis)(void*,double*,double*); /* limit displacements */
   void (*_setdis)(void*,double*);     /* set displacements */
@@ -83,7 +82,8 @@ typedef struct{
   void (*_cntdis)(void*,double*,double); /* continuous update */
 
   zFrame3D *(*_xfer)(void*,zFrame3D*,zFrame3D*); /* frame transfer */
-  void (*_incvel)(void*,zVec3D*,zVec6D*,zVec6D*); /* motion rate transfer */
+  void (*_incvel)(void*,zVec6D*); /* motion rate transfer */
+  void (*_incaccvel)(void*,zVec3D*,zVec6D*);
   void (*_incacc)(void*,zVec6D*);
   void (*_trq)(void*,zVec6D*);        /* joint torque transfer */
   void (*_torsion)(zFrame3D*,zVec6D*,double*); /* inverse computation of torsion and displacement */
@@ -115,13 +115,16 @@ typedef struct{
 } rkJointMotorCom;
 
 typedef struct{
-  void (*_axinertia)(void*,zMat6D*,zMat);
-  void (*_addabibios)(void*,zMat6D*,zMat6D*,zVec6D*,zMat,zMat6D*,zVec6D*);
+  void (*_axinertia)(void*,zMat6D*,zMat,zMat);
+  void (*_addabi)(void*,zMat6D*,zFrame3D*,zMat,zMat6D*);
+  void (*_addbias)(void*,zMat6D*,zVec6D*,zFrame3D*,zMat,zVec6D*);
+  void (*_dtrq)(void*);
   void (*_qacc)(void*,zMat3D*,zMat6D*,zVec6D*,zVec6D*,zMat,zVec6D*);
 } rkJointABICom;
 
 typedef struct{
   byte type; /* joint type */
+  byte size; /* number of joint components */
   void *prp;
   rkJointCom *com;
   rkJointMotorCom *mcom;
@@ -129,7 +132,7 @@ typedef struct{
 } rkJoint;
 
 #define rkJointType(j)     (j)->type
-#define rkJointSize(j)     (j)->com->size
+#define rkJointSize(j)     (j)->size
 
 /*! \brief initialize, create and destroy a joint object.
  *
@@ -218,9 +221,11 @@ __EXPORT rkJoint *rkJointCopyState(rkJoint *src, rkJoint *dst);
 #define rkJointMotorDrivingTrq(j,t) (j)->mcom->_dtrq( (j)->prp, t )
 
 /* ABI */
-#define rkJointABIAxisInertia(j,m,h)          (j)->acom->_axinertia( (j)->prp, m, h )
-#define rkJointABIAddAbiBios(j,i,t,b,h,pi,pb) (j)->acom->_addabibios( (j)->prp, i, t, b, h, pi, pb )
-#define rkJointABIQAcc(j,r,i,b,c,h,a)         (j)->acom->_qacc( (j)->prp, r, i, b, c, h, a )
+#define rkJointABIAxisInertia(j,m,h,ih)    (j)->acom->_axinertia( (j)->prp, m, h, ih )
+#define rkJointABIAddAbi(j,i,f,h,pi)    (j)->acom->_addabi( (j)->prp, i, f, h, pi )
+#define rkJointABIAddBias(j,i,b,f,h,pb) (j)->acom->_addbias( (j)->prp, i, b, f, h, pb )
+#define rkJointABIDrivingTorque(j)      (j)->acom->_dtrq( (j)->prp )
+#define rkJointABIQAcc(j,r,i,b,c,h,a)   (j)->acom->_qacc( (j)->prp, r, i, b, c, h, a )
 
 /*! \brief neutral configuration of joint.
  *
@@ -277,7 +282,8 @@ bool rkJointIsNeutral(rkJoint *j);
  * rkJointCreate
  */
 #define rkJointXfer(j,fo,f)       (j)->com->_xfer( (j)->prp, fo, f )
-#define rkJointIncVel(j,w,v,a)    (j)->com->_incvel( (j)->prp, w, v, a )
+#define rkJointIncVel(j,v)        (j)->com->_incvel( (j)->prp, v)
+#define rkJointIncAccOnVel(j,w,a) (j)->com->_incaccvel( (j)->prp, w, a )
 #define rkJointIncAcc(j,a)        (j)->com->_incacc( (j)->prp, a )
 __EXPORT void rkJointIncRate(rkJoint *j, zVec3D *w, zVec6D *vel, zVec6D *acc);
 #define rkJointCalcTrq(j,f)       (j)->com->_trq( (j)->prp, f )
@@ -354,6 +360,9 @@ __EXPORT zVec3D *_rkJointAxisZ(void *prp, zFrame3D *f, zVec3D *a);
 
 __EXPORT double rkJointTorsionDisRevol(zFrame3D *dev, zVec6D *t);
 __EXPORT double rkJointTorsionDisPrism(zFrame3D *dev, zVec6D *t);
+
+/* for ABI */
+__EXPORT zMat6D *rkJointXferMat6D(zFrame3D *f, zMat6D *i, zMat6D *m);
 
 __END_DECLS
 

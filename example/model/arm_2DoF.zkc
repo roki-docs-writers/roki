@@ -143,6 +143,7 @@ gearinertia : 5.38e-6
 name: link#00
 jointtype: fix
 mass: 1.5
+stuff: body
 COM: { 0.067, 0, 0 }
 inertia: {
  7.395833e-03, 0, 0
@@ -168,6 +169,7 @@ coulomb: 4.32
 staticfriction: 4.92
 motor: motor1
 mass: 1.5
+stuff: body
 COM: { 0.267, 0, 0 }
 inertia: {
  0.00239583, 0, 0
@@ -194,6 +196,7 @@ coulomb: 4.32
 staticfriction: 4.92
 motor: motor1
 mass: 1.0
+stuff: body
 COM: { 0.2, 0, 0 }
 inertia: {
  0.0016667, 0, 0

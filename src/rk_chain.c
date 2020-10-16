@@ -878,6 +878,7 @@ bool rkChainWriteFile(rkChain *c, char filename[])
   zAddSuffix( filename, RK_CHAIN_SUFFIX, name, BUFSIZ );
   if( !( fp = fopen( name, "w" ) ) ) return false;
   rkChainFWrite( fp, c );
+	fclose(fp);
   return true;
 }
 

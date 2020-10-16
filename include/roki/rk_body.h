@@ -202,6 +202,8 @@ __EXPORT rkBody *rkBodyCombineDRC(rkBody *b, rkBody *sb);
  * rkBodyUpdateCOMRate() returns no value.
  */
 __EXPORT zVec3D *rkBodyUpdateCOM(rkBody *body);
+__EXPORT void rkBodyUpdateCOMVel(rkBody *body);
+__EXPORT void rkBodyUpdateCOMAcc(rkBody *body);
 __EXPORT void rkBodyUpdateCOMRate(rkBody *body);
 
 /*! \brief push and pop external force applied to body.

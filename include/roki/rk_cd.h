@@ -71,7 +71,7 @@ typedef struct{
   zVec3D _pro;     /* projection point of the vertex in the link frame */
   zVec3D _ref;     /* referential point to measure displacement of the vertex in the link frame */
   zVec3D f;        /* contact force */
-  rkContactType type; /* type to classify stick/slip mode */
+  rkContactFricType type; /* type to classify stick/slip mode */
   /*! \endcond */
 } rkCDVertDat;
 zListClass( rkCDVertList, rkCDVert, rkCDVertDat );
@@ -82,6 +82,8 @@ zListClass( rkCDVertList, rkCDVert, rkCDVertDat );
 typedef struct{
   zVec3D v;
   zVec3D norm;
+  zVec2D r; /* pos on plane coordinate */
+  zVec2D s; /* sliding direction */
 } rkCDPlaneDat;
 zListClass( rkCDPlaneList, rkCDPlane, rkCDPlaneDat );
 
@@ -94,8 +96,10 @@ typedef struct{
   zVec3D center;      /*!< center of collision volume */
   zPH3D colvol;       /*!< collision volume */
   rkCDPlaneList cplane; /*!< contact plane */
-  zVec3D f;           /*!< contact force */
-  zVec3D r;           /*!< moment arm of contact torque */
+  rkContactInfo *ci;    /*!< contact information */
+  zVec6D f;           /*!< contact force */
+  zFrame3D ref[2];
+  rkContactFricType type; /* type to classify stick/slip mode */
 } rkCDPairDat;
 zListClass( rkCDPairList, rkCDPair, rkCDPairDat );
 
@@ -133,6 +137,9 @@ __EXPORT void rkCDColChkGJKOnly(rkCD *cd); /* GJK */
 __EXPORT void rkCDColVol(rkCD *cd);        /* AABB->OBB->GJK->MP */
 __EXPORT void rkCDColVolBREP(rkCD *cd);    /* AABB->OBB->BREP->CH */
 __EXPORT void rkCDColVolBREPFast(rkCD *cd);/* AABB->OBB->BREP->CH(Fast) */
+
+/* for fd */
+__EXPORT rkCDPlaneList *rkCDPlaneListQuickSort(rkCDPlaneList *list, int (*cmp)(void*,void*,void*), void *priv);
 
 __END_DECLS
 
