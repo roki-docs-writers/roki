@@ -1,0 +1,6 @@
+[contact]
+bind : ground body
+staticfriction : 1.0
+kineticfriction : 0.7
+compensation : 5000.0
+relaxation : 1.0
