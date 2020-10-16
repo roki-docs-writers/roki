@@ -4,3 +4,10 @@ staticfriction : 1.0
 kineticfriction : 0.7
 compensation : 5000.0
 relaxation : 1.0
+
+[contact]
+bind : ground crawler
+staticfriction : 10.0
+kineticfriction : 7.0
+compensation : 100.0
+relaxation : 10.0

@@ -19,6 +19,9 @@ __BEGIN_DECLS
 __EXPORT void rkLinkABIInit(rkLink *link);
 __EXPORT void rkChainABIInit(rkChain *chain);
 
+__EXPORT void rkLinkABIDestroy(rkLink *link);
+__EXPORT void rkChainABIDestroy(rkChain *chain);
+
 __EXPORT void rkLinkABIUpdateInit(rkLink *link, zVec6D *pvel);
 __EXPORT void rkLinkABIUpdateBackward(rkLink *link);
 __EXPORT void rkLinkABIUpdateForward(rkLink *link, zVec6D *pa);

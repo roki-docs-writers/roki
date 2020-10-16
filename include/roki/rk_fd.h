@@ -43,6 +43,12 @@ typedef struct _rkFD{
 
   double _comp_k;
   double _comp_l;
+
+  /* solver */
+  struct _rkFD *(*_solve)(struct _rkFD*);
+  void (*_updateinit)(struct _rkFD*);
+  struct _rkFD *(*_update)(struct _rkFD*);
+  void (*_updatedestroy)(struct _rkFD*);
 } rkFD;
 
 #define rkFDTime(f) (f)->t
@@ -62,6 +68,18 @@ __EXPORT void rkFDChainUpdateFKRate(rkFD *fd);
 __EXPORT void rkFDChainSetDis(rkFDCell *lc, zVec dis);
 __EXPORT bool rkFDContactInfoReadFile(rkFD *fd, char filename[]);
 
+/* for a fake-crawler */
+
+__EXPORT void rkFDCDCellSetSlideMode(rkCDCell *cell, bool mode);
+__EXPORT void rkFDCDCellSetSlideVel(rkCDCell *cell, double vel);
+__EXPORT void rkFDCDCellSetSlideAxis(rkCDCell *cell, zVec3D *axis);
+__EXPORT rkCDCell *rkFDShape3DGetCDCell(rkFD *fd, zShape3D *shape);
+__EXPORT rkCDCell *rkFDShape3DSetSlideMode(rkFD *fd, zShape3D *shape, bool mode);
+__EXPORT rkCDCell *rkFDShape3DSetSlideVel(rkFD *fd, zShape3D *shape, double vel);
+__EXPORT rkCDCell *rkFDShape3DSetSlideAxis(rkFD *fd, zShape3D *shape, zVec3D *axis);
+
+/* ODE updater */
+
 __EXPORT zVec rkFDODECatDefault(zVec x, double k, zVec v, zVec xnew, void *util);
 __EXPORT zVec rkFDODESubDefault(zVec x1, zVec x2, zVec dx, void *util);
 #define rkFDODE2Assign(f,t)        zODE2Assign( &(f)->_ode, t, rkFDODECatDefault, NULL, rkFDODESubDefault, NULL )
@@ -73,11 +91,28 @@ __EXPORT zVec rkFDODESubDefault(zVec x1, zVec x2, zVec dx, void *util);
   (f)->_comp_l = (l);\
 } while(0)
 
-__EXPORT rkFD *rkFDSolve(rkFD *fd);
+#define rkFDSetSolver(f,type) do{\
+  (f)->_solve = rkFDSolve_##type;\
+  (f)->_updateinit = rkFDUpdateInit_##type;\
+  (f)->_update = rkFDUpdate_##type;\
+  (f)->_updatedestroy = rkFDUpdateDestroy_##type;\
+} while(0)
 
-__EXPORT void rkFDUpdateInit(rkFD *fd);
-__EXPORT rkFD *rkFDUpdate(rkFD *fd);
-__EXPORT void rkFDUpdateDestroy(rkFD *fd);
+#define rkFDSolve(f)         (f)->_solve(f)
+#define rkFDUpdateInit(f)    (f)->_updateinit(f)
+#define rkFDUpdate(f)        (f)->_update(f)
+#define rkFDUpdateDestroy(f) (f)->_updatedestroy(f)
+
+/* solver */
+__EXPORT rkFD *rkFDSolve_Vert(rkFD *fd);
+__EXPORT void rkFDUpdateInit_Vert(rkFD *fd);
+__EXPORT rkFD *rkFDUpdate_Vert(rkFD *fd);
+__EXPORT void rkFDUpdateDestroy_Vert(rkFD *fd);
+
+__EXPORT rkFD *rkFDSolve_Volume(rkFD *fd);
+__EXPORT void rkFDUpdateInit_Volume(rkFD *fd);
+__EXPORT rkFD *rkFDUpdate_Volume(rkFD *fd);
+__EXPORT void rkFDUpdateDestroy_Volume(rkFD *fd);
 
 __EXPORT void rkFDWrite(rkFD *fd);
 

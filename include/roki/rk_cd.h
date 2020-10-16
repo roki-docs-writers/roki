@@ -3,12 +3,14 @@
  *
  * rk_cd - collision detection
  * contributer: 2014-2015 Ken'ya Tanaka
+ * contributer: 2014-2015 Naoki Wakisaka
  */
 
 #ifndef __RK_CD_H__
 #define __RK_CD_H__
 
 #include <roki/rk_chain.h>
+#include <zeo/zeo_brep.h>
 
 __BEGIN_DECLS
 
@@ -26,6 +28,10 @@ typedef struct{
   zAABox3D aabb;     /*!< axis aligned bounding box in the world frame */
   zBox3D obb;        /*!< oriented bounding box in the world frame */
   zPH3D ph;          /*!< polyhedron in the world frame */
+  /* for a fake-crawler */
+  bool slide_mode;
+  double slide_vel;
+  zVec3D slide_axis;
   /*! \cond */
   bool _bb_update_flag; /* check if boundary boxes are updated */
   bool _ph_update_flag; /* check if polyhedra are updated */
@@ -74,11 +80,22 @@ zListClass( rkCDVertList, rkCDVert, rkCDVertDat );
 /*! \brief collision detection pair class.
  *//* ******************************************************* */
 typedef struct{
+  zVec3D v;
+  zVec3D norm;
+} rkCDPlaneDat;
+zListClass( rkCDPlaneList, rkCDPlane, rkCDPlaneDat );
+
+typedef struct{
   rkCDCell *cell[2];  /*!< a pair of the collision detection cell */
   bool is_col;        /*!< flag to check collision */
   rkCDVertList vlist; /*!< a list of vertices */
   zVec3D norm;        /*!< normal vector of the pair */
+  zVec3D axis[3];     /*!< contact bases */
+  zVec3D center;      /*!< center of collision volume */
   zPH3D colvol;       /*!< collision volume */
+  rkCDPlaneList cplane; /*!< contact plane */
+  zVec3D f;           /*!< contact force */
+  zVec3D r;           /*!< moment arm of contact torque */
 } rkCDPairDat;
 zListClass( rkCDPairList, rkCDPair, rkCDPairDat );
 
@@ -113,7 +130,9 @@ __EXPORT void rkCDColChkOBBVert(rkCD *cd); /* AABB->OBB->Vert(OBB) */
 
 __EXPORT void rkCDColChkGJKOnly(rkCD *cd); /* GJK */
 
-__EXPORT void rkCDColVol(rkCD *cd);
+__EXPORT void rkCDColVol(rkCD *cd);        /* AABB->OBB->GJK->MP */
+__EXPORT void rkCDColVolBREP(rkCD *cd);    /* AABB->OBB->BREP->CH */
+__EXPORT void rkCDColVolBREPFast(rkCD *cd);/* AABB->OBB->BREP->CH(Fast) */
 
 __END_DECLS
 

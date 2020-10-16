@@ -1,8 +1,8 @@
 # dependency
 # CURE-1.0.0-beta5
-# ZM-1.0.0-beta5
-# ZEO-1.0.0-beta5
+# ZM-1.0.0
+# ZEO-1.0.0
 
 PREFIX=$(HOME)/usr
 PROJNAME=roki
-VERSION=1.0.0-beta6
+VERSION=1.0.0

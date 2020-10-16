@@ -48,6 +48,22 @@ void rkChainABIInit(rkChain *chain)
     rkLinkABIInit( rkChainLink(chain,i) );
 }
 
+void rkLinkABIDestroy(rkLink *link)
+{
+  rkABIPrp *ap;
+
+  ap = rkLinkABIPrp(link);
+  zMatFreeAO( 2, ap->axi, ap->iaxi );
+}
+
+void rkChainABIDestroy(rkChain *chain)
+{
+  register int i;
+
+  for( i=0; i<rkChainNum(chain); i++ )
+    rkLinkABIDestroy( rkChainLink(chain,i) );
+}
+
 /* ABI method */
 void rkLinkABIUpdateInit(rkLink *link, zVec6D *pvel)
 {
@@ -157,6 +173,10 @@ void rkLinkABIUpdateForward(rkLink *link, zVec6D *pa)
   /* todo friction */
   zMulMatTMat3D(rkLinkOrgAtt(link), rkLinkAdjAtt(link), &att);
   rkJointABIQAcc( rkLinkJoint(link), &att, &ap->i, &ap->b, &jac, ap->iaxi, rkLinkAcc(link) );
+
+  /* link wrench */
+  zMulMat6DVec6D( &ap->i, rkLinkAcc(link), rkLinkWrench(link) );
+  zVec6DAddDRC( rkLinkWrench(link), &ap->b );
 
   /* recursive forward computation of ABI */
   if( rkLinkSibl(link) )

@@ -3,6 +3,7 @@
  *
  * rk_cd - collision detection
  * contributer: 2014-2015 Ken'ya Tanaka
+ * contributer: 2014-2015 Naoki Wakisaka
  */
 
 #include <roki/rk_cd.h>
@@ -37,6 +38,9 @@ rkCDCell *_rkCDCellCreate(rkCDCell *cell, rkChain *chain, rkLink *link, zShape3D
   cell->data.type = type;
   cell->data._ph_update_flag = false;
   cell->data._bb_update_flag = false;
+  /* for a fake-crawler */
+  cell->data.slide_mode = false;
+  cell->data.slide_vel = 0.0;
   /* convert the original shape to a polyhedron */
   if( zShape3DType(cell->data.shape) != ZSHAPE_PH )
     if( !zShape3DToPH( cell->data.shape ) ) return NULL;
@@ -159,6 +163,7 @@ void rkCDDestroy(rkCD *cd)
 void _rkCDPairDestroy(rkCDPair *pair)
 {
   zListDestroy( rkCDVert, &pair->data.vlist );
+  zListDestroy( rkCDPlane, &pair->data.cplane );
   zPH3DDestroy( &pair->data.colvol );
 }
 
@@ -178,6 +183,7 @@ rkCDPair *_rkCDPairReg(rkCD *cd, rkCDCell *c1, rkCDCell *c2)
   pair->data.cell[1] = c2;
   pair->data.is_col = false;
   zListInit( &pair->data.vlist );
+  zListInit( &pair->data.cplane );
   zListInsertHead( &cd->plist, pair );
   zPH3DInit( &pair->data.colvol );
   return pair;
@@ -218,6 +224,7 @@ void rkCDReset(rkCD *cd)
 
   zListForEach( &cd->plist, pair ){
     pair->data.is_col = false;
+    zListDestroy( rkCDPlane, &pair->data.cplane );
     zPH3DDestroy( &pair->data.colvol );
   }
    zListForEach(&cd->clist, cell){
@@ -590,11 +597,155 @@ void rkCDColChkOBBVert(rkCD *cd)
   _rkCDColChkOBBVert( cd );
 }
 
-void rkCDColVol(rkCD *cd)
+void _rkCDColVol(rkCD *cd)
 {
   rkCDPair *cp;
 
+  cd->colnum = 0;
   zListForEach( &cd->plist, cp )
-    if( cp->data.is_col == true )
-    zIntersectPH3DFast( &cp->data.cell[0]->data.ph, &cp->data.cell[1]->data.ph, &cp->data.colvol );
+    if( cp->data.is_col == true ){
+      /* TO BE MODIFIED */
+      rkCDCellUpdatePH( cp->data.cell[0] );
+      rkCDCellUpdatePH( cp->data.cell[1] );
+      if( !zIntersectPH3D( &cp->data.cell[0]->data.ph, &cp->data.cell[1]->data.ph, &cp->data.colvol ) )
+        cp->data.is_col = false;
+      else{
+        cd->colnum++;
+        /* axis */
+        zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
+        zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
+        /* center */
+        zPH3DBarycenter( &cp->data.colvol, &cp->data.center );
+      }
+    }
+}
+
+void rkCDColVol(rkCD *cd)
+{
+  rkCDColChkOBB( cd );
+  _rkCDColVol( cd );
+}
+
+void _rkCDIntegrationNormBREP(zBREP *b1, zBREP *b2, zVec3D *norm)
+{
+  zVec3D v, v1, v2;
+  zBREPFaceListCell *fc;
+
+  zVec3DClear( norm );
+  zListForEach( &b1->flist, fc ){
+    zVec3DSub( &fc->data.v[1]->data.p, &fc->data.v[0]->data.p, &v1 );
+    zVec3DSub( &fc->data.v[2]->data.p, &fc->data.v[0]->data.p, &v2 );
+    zVec3DOuterProd( &v1, &v2, &v );
+    zVec3DSubDRC( norm, &v );
+  }
+  zListForEach( &b2->flist, fc ){
+    zVec3DSub( &fc->data.v[1]->data.p, &fc->data.v[0]->data.p, &v1 );
+    zVec3DSub( &fc->data.v[2]->data.p, &fc->data.v[0]->data.p, &v2 );
+    zVec3DOuterProd( &v1, &v2, &v );
+    zVec3DAddDRC( norm, &v );
+  }
+  if( zVec3DIsTiny( norm ) ){
+    zVec3DCopy( ZVEC3DZ, norm );
+  } else{
+    zVec3DNormalizeNCDRC( norm );
+  }
+}
+
+zPH3D *_rkCDBREPMergeCH(zBREP *b1, zBREP *b2, zPH3D *ph)
+{
+  zBREPVertListCell *vc;
+  zVec3DList vlist;
+
+  zListInit( &vlist );
+  zListForEach( &b1->vlist, vc )
+    zVec3DListInsert( &vlist, &vc->data.p, false );
+  zListForEach( &b2->vlist, vc )
+    zVec3DListInsert( &vlist, &vc->data.p, false );
+  zCH3DPL( ph, &vlist );
+  zVec3DListDestroy( &vlist,false );
+  return ph;
+}
+
+void _rkCDColVolBREP(rkCD *cd)
+{
+  rkCDPair *cp;
+  zBREP brep[2];
+
+  cd->colnum = 0;
+  zListForEach( &cd->plist, cp )
+    if( cp->data.is_col == true ){
+      /* TO BE MODIFIED */
+      rkCDCellUpdatePH( cp->data.cell[0] );
+      rkCDCellUpdatePH( cp->data.cell[1] );
+      if( !zPH3D2BREP( &cp->data.cell[0]->data.ph, &brep[0] ) ||
+          !zPH3D2BREP( &cp->data.cell[1]->data.ph, &brep[1] ) ||
+          !zBREPTruncPH3D( &brep[0], &cp->data.cell[1]->data.ph ) ||
+          !zBREPTruncPH3D( &brep[1], &cp->data.cell[0]->data.ph ) ||
+          ( zListIsEmpty(&brep[0].vlist) && zListIsEmpty(&brep[1].vlist) ) ){
+        cp->data.is_col = false;
+        goto CONTINUE;
+      }
+      cd->colnum++;
+      /* norm */
+      _rkCDIntegrationNormBREP( &brep[0], &brep[1], &cp->data.norm );
+      /* merge */
+      _rkCDBREPMergeCH( &brep[0], &brep[1], &cp->data.colvol );
+      /* axis */
+      zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
+      zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
+      /* center */
+      zPH3DBarycenter( &cp->data.colvol, &cp->data.center );
+     CONTINUE:
+      zBREPDestroy( &brep[0] );
+      zBREPDestroy( &brep[1] );
+    }
+}
+
+void _rkCDColVolBREPFast(rkCD *cd)
+{
+  rkCDPair *cp;
+  zBREP brep[2];
+  zAABox3D ib;
+
+  cd->colnum = 0;
+  zListForEach( &cd->plist, cp )
+    if( cp->data.is_col == true ){
+      /* TO BE MODIFIED */
+      rkCDCellUpdatePH( cp->data.cell[0] );
+      rkCDCellUpdatePH( cp->data.cell[1] );
+      if( !zIntersectPH3DBox( &cp->data.cell[0]->data.ph, &cp->data.cell[1]->data.ph, &ib ) ||
+          !zPH3D2BREPInBox( &cp->data.cell[0]->data.ph, &ib, &brep[0] ) ||
+          !zPH3D2BREPInBox( &cp->data.cell[1]->data.ph, &ib, &brep[1] ) ||
+          !zBREPTruncPH3D( &brep[0], &cp->data.cell[1]->data.ph ) ||
+          !zBREPTruncPH3D( &brep[1], &cp->data.cell[0]->data.ph ) ||
+          ( zListIsEmpty(&brep[0].vlist) && zListIsEmpty(&brep[1].vlist) ) ){
+        cp->data.is_col = false;
+        goto CONTINUE;
+      }
+      cd->colnum++;
+      /* norm */
+      _rkCDIntegrationNormBREP( &brep[0], &brep[1], &cp->data.norm );
+      /* merge */
+      _rkCDBREPMergeCH( &brep[0], &brep[1], &cp->data.colvol );
+      /* axis */
+      zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
+      zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
+      /* center */
+      zPH3DBarycenter( &cp->data.colvol, &cp->data.center );
+     CONTINUE:
+      zBREPDestroy( &brep[0] );
+      zBREPDestroy( &brep[1] );
+    }
+}
+
+void rkCDColVolBREP(rkCD *cd)
+{
+  rkCDColChkOBB( cd );
+  _rkCDColVolBREP( cd );
+}
+
+void rkCDColVolBREPFast(rkCD *cd)
+{
+  rkCDColChkOBB( cd );
+  _rkCDColVolBREPFast( cd );
 }
