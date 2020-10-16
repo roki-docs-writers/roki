@@ -32,7 +32,6 @@ typedef struct{
   double _u[2];
 } rkJointPrpHooke;
 
-__EXPORT rkJoint *rkJointSetFuncHooke(rkJoint *joint);
 __EXPORT rkJoint *rkJointCreateHooke(rkJoint *joint);
 
 __END_DECLS

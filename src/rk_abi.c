@@ -188,8 +188,7 @@ void rkLinkABIUpdateForwardGetWrench(rkLink *link, zVec6D *pa)
 {
   _rkLinkABIUpdateForward( link, pa );
   /* link wrench */
-  zMulMat6DVec6D( &rkLinkABIPrp(link)->i, rkLinkAcc(link), rkLinkWrench(link) );
-  zVec6DAddDRC( rkLinkWrench(link), &rkLinkABIPrp(link)->b );
+  rkJointUpdateWrench( rkLinkJoint(link), &rkLinkABIPrp(link)->i, &rkLinkABIPrp(link)->b, rkLinkAcc(link) );
 
   /* recursive forward computation of ABI */
   if( rkLinkSibl(link) )

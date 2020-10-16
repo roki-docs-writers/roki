@@ -72,6 +72,8 @@ typedef struct{
   zVec3D _ref;     /* referential point to measure displacement of the vertex in the link frame */
   zVec3D f;        /* contact force */
   rkContactFricType type; /* type to classify stick/slip mode */
+  zVec3D dir;      /* direction of kinetic friction */
+  zVec3D vel;      /* velocity of the vertex */
   /*! \endcond */
 } rkCDVertDat;
 zListClass( rkCDVertList, rkCDVert, rkCDVertDat );
@@ -110,11 +112,13 @@ typedef struct{
   rkCDCellList clist; /*!< a list of collision detection cells */
   rkCDPairList plist; /*!< a list of collision detection pairs */
   int colnum;         /*!< the number of collision pairs */
+  rkContactFricType def_type; /*!< default friction type */
 } rkCD;
 
 __EXPORT rkCD *rkCDCreate(rkCD *cd);
 __EXPORT void rkCDDestroy(rkCD *cd);
 __EXPORT void rkCDReset(rkCD *cd);
+__EXPORT void rkCDSetDefaultFricType(rkCD *cd, rkContactFricType type);
 
 __EXPORT rkCD *rkCDChainReg(rkCD *cd, rkChain *chain, rkCDCellType type);
 __EXPORT void rkCDChainUnreg(rkCD *cd, rkChain *chain);
@@ -137,6 +141,8 @@ __EXPORT void rkCDColChkGJKOnly(rkCD *cd); /* GJK */
 __EXPORT void rkCDColVol(rkCD *cd);        /* AABB->OBB->GJK->MP */
 __EXPORT void rkCDColVolBREP(rkCD *cd);    /* AABB->OBB->BREP->CH */
 __EXPORT void rkCDColVolBREPFast(rkCD *cd);/* AABB->OBB->BREP->CH(Fast) */
+
+__EXPORT void rkCDColVolBREPVert(rkCD *cd);    /* AABB->OBB->BREP->CH, Vert */
 
 /* for fd */
 __EXPORT rkCDPlaneList *rkCDPlaneListQuickSort(rkCDPlaneList *list, int (*cmp)(void*,void*,void*), void *priv);

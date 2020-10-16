@@ -154,6 +154,7 @@ void _rkJointIncAccOnVelFloat(void *prp, zVec3D *w, zVec6D *acc)
   zVec6D vl;
   zVec3D tmp;
 
+	/* FIXME: _att -> ^pR_j */
   zMulMatTVec6D( &_rkc(prp)->_att, &_rkc(prp)->vel, &vl );
   zVec3DOuterProd( w, zVec6DLin(&vl), &tmp );
   zVec3DCatDRC( zVec6DLin(acc), 2, &tmp );
@@ -244,6 +245,7 @@ static zVec3D* (*_rk_joint_axis_float_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_float = {
+  6,
   _rkJointLimDisFloat,
   _rkJointSetDisFloat,
   _rkJointSetVelFloat,
@@ -344,15 +346,8 @@ static rkJointABICom rk_joint_abi_float = {
   _rkJointABIAddBiasFloat,
   _rkJointABIDrivingTorqueFloat,
   _rkJointABIQAccFloat,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncFloat(rkJoint *j)
-{
-  j->com = &rk_joint_float;
-  j->mcom = &rk_joint_motor_float;
-  j->acom = &rk_joint_abi_float;
-  return j;
-}
 
 /* rkJointCreateFloat
  * - create free-floating joint instance.
@@ -361,8 +356,10 @@ rkJoint *rkJointCreateFloat(rkJoint *j)
 {
   if( !( j->prp = zAlloc( rkJointPrpFloat, 1 ) ) )
     return NULL;
-  j->size = 6;
-  return rkJointSetFuncFloat( j );
+  j->com = &rk_joint_float;
+  j->mcom = &rk_joint_motor_float;
+  j->acom = &rk_joint_abi_float;
+  return j;
 }
 
 #undef _rkc

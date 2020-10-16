@@ -31,10 +31,6 @@ height: 0.099
 [link]
 name: link#10-F
 jointtype: fix
-min: -180.0000000000
-max: 180.0000000000
-stiff: 0.0000000000
-viscos: 0.0000000000
 mass: 0.25
 COM: ( 0.05 0 0)
 inertia: {
@@ -52,13 +48,9 @@ shape: wall
 
 [link]
 name: link#11-F
-jointtype: float
-min: -180.0000000000
-max: 180.0000000000
-stiff: 0.0
-viscos: 0.001
-coulomb: 0.0
-staticfriction: 1.0
+jointtype: breakablefloat
+forcethreshold: 200.0
+torquethreshold: 200.0
 mass: 0.25
 COM: ( 0.05 0 0)
 inertia: {
@@ -78,13 +70,9 @@ break: 200.0 200.0
 
 [link]
 name: link#12-F
-jointtype: float
-min: -180.0000000000
-max: 180.0000000000
-stiff: 0.0
-viscos: 0.001
-coulomb: 0.0
-staticfriction: 1.0
+jointtype: breakablefloat
+forcethreshold: 10.0
+torquethreshold: 10.0
 mass: 0.25
 COM: ( 0.05 0 0)
 inertia: {
@@ -104,13 +92,9 @@ break: 10.0 10.0
 
 [link]
 name: link#13-F
-jointtype: float
-min: -180.0000000000
-max: 180.0000000000
-stiff: 0.0
-viscos: 0.001
-coulomb: 0.0
-staticfriction: 1.0
+jointtype: breakablefloat
+forcethreshold: 10.0
+torquethreshold: 10.0
 mass: 0.25
 COM: ( 0.05 0 0)
 inertia: {

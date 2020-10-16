@@ -237,6 +237,7 @@ static zVec3D* (*_rk_joint_axis_prism_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisZ,
 };
 static rkJointCom rk_joint_prism = {
+  1,
   _rkJointLimDisPrism,
   _rkJointSetDisPrism,
   _rkJointSetVelPrism,
@@ -381,15 +382,8 @@ static rkJointABICom rk_joint_abi_prism = {
   _rkJointABIAddBiasPrism,
   _rkJointABIDrivingTorquePrism,
   _rkJointABIQAccPrism,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncPrism(rkJoint *j)
-{
-  j->com = &rk_joint_prism;
-  j->mcom = &rk_joint_motor_prism;
-  j->acom = &rk_joint_abi_prism;
-  return j;
-}
 
 /* rkJointCreatePrism
  * - create prismatic joint instance.
@@ -401,8 +395,10 @@ rkJoint *rkJointCreatePrism(rkJoint *j)
   _rkc(j->prp)->max = HUGE_VAL;
   _rkc(j->prp)->min =-HUGE_VAL;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->size = 1;
-  return rkJointSetFuncPrism( j );
+  j->com = &rk_joint_prism;
+  j->mcom = &rk_joint_motor_prism;
+  j->acom = &rk_joint_abi_prism;
+  return j;
 }
 
 #undef _rkc

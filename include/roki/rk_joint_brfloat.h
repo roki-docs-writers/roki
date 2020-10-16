@@ -1,11 +1,11 @@
 /* RoKi - Robot Kinetics library
  * Copyright (C) 1998 Tomomichi Sugihara (Zhidao)
  *
- * rk_joint_float - joint structure: free-floating joint
+ * rk_joint_brfloat - joint structure: breakable free-floating joint
  */
 
-#ifndef __RK_JOINT_FLOAT_H__
-#define __RK_JOINT_FLOAT_H__
+#ifndef __RK_JOINT_BRFLOAT_H__
+#define __RK_JOINT_BRFLOAT_H__
 
 /* NOTE: never include this header file in user programs. */
 
@@ -21,10 +21,12 @@ typedef struct{
   zVec6D dis, vel, acc, trq;
 
   zMat3D _att; /* internal matrix */
-} rkJointPrpFloat;
 
-__EXPORT rkJoint *rkJointCreateFloat(rkJoint *joint);
+  double ep_f, ep_t; /* threshold to break joint */
+} rkJointPrpBrFloat;
+
+__EXPORT rkJoint *rkJointCreateBrFloat(rkJoint *joint);
 
 __END_DECLS
 
-#endif /* __RK_JOINT_FLOAT_H__ */
+#endif /* __RK_JOINT_BRFLOAT_H__ */

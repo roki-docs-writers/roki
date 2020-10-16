@@ -240,6 +240,7 @@ static zVec3D* (*_rk_joint_axis_spher_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_spher = {
+  3,
   _rkJointLimDisSpher,
   _rkJointSetDisSpher,
   _rkJointSetVelSpher,
@@ -354,15 +355,8 @@ static rkJointABICom rk_joint_abi_spher = {
   _rkJointABIAddBiasSpher,
   _rkJointABIDrivingTorqueSpher,
   _rkJointABIQAccSpher,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncSpher(rkJoint *j)
-{
-  j->com = &rk_joint_spher;
-  j->mcom = &rk_joint_motor_spher;
-  j->acom = &rk_joint_abi_spher;
-  return j;
-}
 
 /* rkJointCreateSpher
  * - create spherical joint instance.
@@ -372,8 +366,10 @@ rkJoint *rkJointCreateSpher(rkJoint *j)
   if( !( j->prp = zAlloc( rkJointPrpSpher, 1 ) ) )
     return NULL;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->size = 3;
-  return rkJointSetFuncSpher( j );
+  j->com = &rk_joint_spher;
+  j->mcom = &rk_joint_motor_spher;
+  j->acom = &rk_joint_abi_spher;
+  return j;
 }
 
 #undef _rkc

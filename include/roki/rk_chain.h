@@ -29,8 +29,7 @@ typedef struct{
   zVec3D wldcomvel;
   zVec3D wldcomacc;
 
-  /* for rkFD Class */
-  bool _col_flag;
+  bool _iscol;
 } rkChain;
 
 #define rkChainNum(c)              zArrayNum( &(c)->link )

@@ -29,7 +29,6 @@ void rkLinkInit(rkLink *l)
   rkLinkSetChild( l, NULL );
   rkLinkSetSibl( l, NULL );
 
-  l->_bprp = NULL;
   l->_util = NULL;
 }
 
@@ -39,7 +38,6 @@ void rkLinkInit(rkLink *l)
 void rkLinkDestroy(rkLink *l)
 {
   zNameDestroy( l );
-  zFree( l->_bprp );
   rkJointDestroy( rkLinkJoint(l) );
   rkLinkExtWrenchDestroy( l );
   rkLinkShapeDestroy( l );
@@ -52,7 +50,7 @@ void rkLinkDestroy(rkLink *l)
 rkLink *rkLinkClone(rkLink *org, rkLink *cln, zMShape3D *so, zMShape3D *sc)
 {
   if( !zNameSet( cln, zName(org) ) ||
-      !rkJointCreate( rkLinkJoint(cln), rkLinkJointType(org) ) ||
+      !rkJointClone( rkLinkJoint(org), rkLinkJoint(cln) ) ||
       !rkBodyClone( rkLinkBody(org), rkLinkBody(cln), so, sc ) ){
     ZALLOCERROR();
     return NULL;
@@ -328,14 +326,6 @@ bool _rkLinkFRead(FILE *fp, void *instance, char *buf, bool *success)
       return ( *success = false );
     }
     rkLinkShapePush( prm->l, sp );
-  } else if( strcmp( buf, "break" ) == 0 ){
-    if( !(prm->l->_bprp = zAlloc( rkBreakPrp, 1 )) ){
-      ZALLOCERROR();
-      return ( *success = false );
-    }
-    prm->l->_bprp->is_broken = false;
-    prm->l->_bprp->ep_f = zFDouble( fp );
-    prm->l->_bprp->ep_t = zFDouble( fp );
   } else if( !rkJointQueryFRead( fp, buf, rkLinkJoint(prm->l), prm->marray, prm->nm ) )
     return false;
   return true;
@@ -382,8 +372,6 @@ void rkLinkFWrite(FILE *fp, rkLink *l)
       fprintf( fp, "shape: %s\n", zName( zShapeListCellShape(cp) ) );
   if( rkLinkParent(l) )
     fprintf( fp, "parent: %s\n", zName( rkLinkParent(l) ) );
-  if( rkLinkBreakPrp(l) )
-    fprintf( fp, "break: %f %f\n", rkLinkBreakPrp(l)->ep_f, rkLinkBreakPrp(l)->ep_t );
   fprintf( fp, "\n" );
 }
 

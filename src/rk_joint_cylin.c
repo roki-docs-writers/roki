@@ -274,6 +274,7 @@ static zVec3D* (*_rk_joint_axis_cylin_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_cylin = {
+  2,
   _rkJointLimDisCylin,
   _rkJointSetDisCylin,
   _rkJointSetVelCylin,
@@ -440,15 +441,8 @@ static rkJointABICom rk_joint_abi_cylin = {
   _rkJointABIAddBiasCylin,
   _rkJointABIDrivingTorqueCylin,
   _rkJointABIQAccCylin,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncCylin(rkJoint *j)
-{
-  j->com = &rk_joint_cylin;
-  j->mcom = &rk_joint_motor_cylin;
-  j->acom = &rk_joint_abi_cylin;
-  return j;
-}
 
 /* rkJointCreateCylin
  * - create cylindrical joint instance.
@@ -462,8 +456,10 @@ rkJoint *rkJointCreateCylin(rkJoint *j)
   _rkc(j->prp)->max[1] = zPI;
   _rkc(j->prp)->min[1] =-zPI;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->size = 2;
-  return rkJointSetFuncCylin( j );
+  j->com = &rk_joint_cylin;
+  j->mcom = &rk_joint_motor_cylin;
+  j->acom = &rk_joint_abi_cylin;
+  return j;
 }
 
 #undef _rkc

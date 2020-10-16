@@ -28,6 +28,7 @@ enum{
   RK_JOINT_HOOKE,   /* DOF = 2, universal */
   RK_JOINT_SPHER,   /* DOF = 3, spherical */
   RK_JOINT_FLOAT,   /* DOF = 6, free-floating */
+  RK_JOINT_BRFLOAT, /* DOF = 6, breakable free-floating */
 };
 
 /*! \brief convert from/to joint type and to/from string.
@@ -58,6 +59,7 @@ __EXPORT byte rkJointTypeFromStr(char *str);
 /* CLASS: rkJoint
  * joint class
  * ********************************************************** */
+struct _rkJoint;
 
 /* for forward dynamics (used in rk_fd) */
 typedef struct{
@@ -66,6 +68,7 @@ typedef struct{
 } rkJointRef;
 
 typedef struct{
+  byte size; /* number of joint components */
   /* joint value manipulation function */
   void (*_limdis)(void*,double*,double*); /* limit displacements */
   void (*_setdis)(void*,double*);     /* set displacements */
@@ -120,19 +123,21 @@ typedef struct{
   void (*_addbias)(void*,zMat6D*,zVec6D*,zFrame3D*,zMat,zVec6D*);
   void (*_dtrq)(void*);
   void (*_qacc)(void*,zMat3D*,zMat6D*,zVec6D*,zVec6D*,zMat,zVec6D*);
+  void (*_wrench)(struct _rkJoint*,zMat6D*,zVec6D*,zVec6D*);
 } rkJointABICom;
 
-typedef struct{
+typedef struct _rkJoint{
   byte type; /* joint type */
-  byte size; /* number of joint components */
   void *prp;
+  zVec6D wrench; /* joint wrench */
   rkJointCom *com;
   rkJointMotorCom *mcom;
   rkJointABICom *acom;
 } rkJoint;
 
 #define rkJointType(j)     (j)->type
-#define rkJointSize(j)     (j)->size
+#define rkJointSize(j)     (j)->com->size
+#define rkJointWrench(j)   &(j)->wrench
 
 /*! \brief initialize, create and destroy a joint object.
  *
@@ -159,10 +164,13 @@ typedef struct{
   (j)->type = RK_JOINT_INVALID;\
   (j)->prp = NULL;\
   (j)->com = NULL;\
+  (j)->mcom = NULL;\
+  (j)->acom = NULL;\
 } while(0)
 __EXPORT rkJoint *rkJointCreate(rkJoint *j, byte type);
 __EXPORT void rkJointDestroy(rkJoint *j);
 
+__EXPORT rkJoint *rkJointClone(rkJoint *org, rkJoint *cln);
 __EXPORT rkJoint *rkJointCopyState(rkJoint *src, rkJoint *dst);
 
 /*! \brief set and get joint status.
@@ -221,11 +229,13 @@ __EXPORT rkJoint *rkJointCopyState(rkJoint *src, rkJoint *dst);
 #define rkJointMotorDrivingTrq(j,t) (j)->mcom->_dtrq( (j)->prp, t )
 
 /* ABI */
-#define rkJointABIAxisInertia(j,m,h,ih)    (j)->acom->_axinertia( (j)->prp, m, h, ih )
+#define rkJointABIAxisInertia(j,m,h,ih) (j)->acom->_axinertia( (j)->prp, m, h, ih )
 #define rkJointABIAddAbi(j,i,f,h,pi)    (j)->acom->_addabi( (j)->prp, i, f, h, pi )
 #define rkJointABIAddBias(j,i,b,f,h,pb) (j)->acom->_addbias( (j)->prp, i, b, f, h, pb )
 #define rkJointABIDrivingTorque(j)      (j)->acom->_dtrq( (j)->prp )
 #define rkJointABIQAcc(j,r,i,b,c,h,a)   (j)->acom->_qacc( (j)->prp, r, i, b, c, h, a )
+/* #define rkJointUpdateWrench(j,i,b,a)    (j)->acom->_wrench( (j)->prp, i, b, a, rkJointWrench(j) ) */
+#define rkJointUpdateWrench(j,i,b,a)    (j)->acom->_wrench( j, i, b, a )
 
 /*! \brief neutral configuration of joint.
  *
@@ -363,15 +373,18 @@ __EXPORT double rkJointTorsionDisPrism(zFrame3D *dev, zVec6D *t);
 
 /* for ABI */
 __EXPORT zMat6D *rkJointXferMat6D(zFrame3D *f, zMat6D *i, zMat6D *m);
+/* __EXPORT void _rkJointUpdateWrench(void *prp, zMat6D *i, zVec6D *b, zVec6D *acc, zVec6D *w); */
+__EXPORT void _rkJointUpdateWrench(rkJoint *j, zMat6D *i, zVec6D *b, zVec6D *acc);
 
 __END_DECLS
 
-#include <roki/rk_joint_fixed.h> /* fixed joint */
-#include <roki/rk_joint_revol.h> /* revolutional joint */
-#include <roki/rk_joint_prism.h> /* prismatic joint */
-#include <roki/rk_joint_cylin.h> /* cylindrical joint */
-#include <roki/rk_joint_hooke.h> /* universal joint */
-#include <roki/rk_joint_spher.h> /* spherical joint */
-#include <roki/rk_joint_float.h> /* free-floating joint */
+#include <roki/rk_joint_fixed.h>   /* fixed joint */
+#include <roki/rk_joint_revol.h>   /* revolutional joint */
+#include <roki/rk_joint_prism.h>   /* prismatic joint */
+#include <roki/rk_joint_cylin.h>   /* cylindrical joint */
+#include <roki/rk_joint_hooke.h>   /* universal joint */
+#include <roki/rk_joint_spher.h>   /* spherical joint */
+#include <roki/rk_joint_float.h>   /* free-floating joint */
+#include <roki/rk_joint_brfloat.h> /* breakable free-floating joint */
 
 #endif /* __RK_JOINT_H__ */

@@ -62,13 +62,13 @@ void rkMotorDestroy(rkMotor *m)
   rkMotorInit( m );
 }
 
-rkMotor *rkMotorClone(rkMotor *src, rkMotor *dst)
+rkMotor *rkMotorClone(rkMotor *org, rkMotor *cln)
 {
-  if( dst->type > RK_MOTOR_NONE ) return NULL;
-  if( !rkMotorCreate( dst, rkMotorType(src) ) ) return NULL;
-  zNameSet( dst, zName(src) );
-  rkMotorStateCopy( src, dst );
-  return dst;
+  if( cln->type > RK_MOTOR_NONE ) return NULL;
+  if( !rkMotorCreate( cln, rkMotorType(org) ) ) return NULL;
+  zNameSet( cln, zName(org) );
+  rkMotorStateCopy( org, cln );
+  return cln;
 }
 
 void rkMotorFWrite(FILE *fp, rkMotor *m)
@@ -81,6 +81,25 @@ void rkMotorFWrite(FILE *fp, rkMotor *m)
 /* ********************************************************** */
 /* CLASS: rkMotorArray
  * ********************************************************** */
+
+rkMotorArray *rkMotorArrayClone(rkMotorArray *org)
+{
+	rkMotorArray *cln;
+	register int i;
+
+	 if( !( cln = zAlloc( rkMotorArray, 1 ) ) ){
+    ZALLOCERROR();
+    return NULL;
+  }
+	 zArrayAlloc( cln, rkMotor, zArrayNum(org) );
+  if( zArrayNum(cln) != zArrayNum(org) ) return NULL;
+  for( i=0; i<zArrayNum(cln); i++ ){
+		rkMotorType(zArrayElem(cln,i)) = RK_MOTOR_NONE;
+    if( !rkMotorClone( zArrayElem(org,i), zArrayElem(cln,i) ) )
+      return NULL;
+	}
+  return cln;
+}
 
 rkMotorArray *_rkMotorArrayFAlloc(FILE *fp, rkMotorArray *m)
 {

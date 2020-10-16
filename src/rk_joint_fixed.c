@@ -79,6 +79,7 @@ static zVec3D* (*_rk_joint_axis_fixed_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_fixed = {
+  0,
   _rkJointLimValFixed,
   _rkJointValFixed,
   _rkJointValFixed,
@@ -171,21 +172,16 @@ static rkJointABICom rk_joint_abi_fixed = {
   _rkJointABIAddBiasFixed,
   _rkJointABIDrivingTorqueFixed,
   _rkJointABIQAccFixed,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncFix(rkJoint *j)
-{
-  j->com = &rk_joint_fixed;
-  j->mcom = &rk_joint_motor_fixed;
-  j->acom = &rk_joint_abi_fixed;
-  return j;
-}
 
 /* rkJointCreateFixed
  * - create fixed joint instance.
  */
 rkJoint *rkJointCreateFixed(rkJoint *j)
 {
-  j->size = 0;
-  return rkJointSetFuncFix( j );
+  j->com = &rk_joint_fixed;
+  j->mcom = &rk_joint_motor_fixed;
+  j->acom = &rk_joint_abi_fixed;
+  return j;
 }

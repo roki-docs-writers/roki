@@ -30,7 +30,6 @@ typedef struct{
   double _u;
 } rkJointPrpPrism;
 
-__EXPORT rkJoint *rkJointSetFuncPrism(rkJoint *joint);
 __EXPORT rkJoint *rkJointCreatePrism(rkJoint *joint);
 
 __END_DECLS

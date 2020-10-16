@@ -133,6 +133,7 @@ rkCD *rkCDCreate(rkCD *cd)
   zListInit( &cd->clist );
   zListInit( &cd->plist );
   cd->colnum = 0;
+  cd->def_type = RK_CONTACT_KF;
   return cd;
 }
 
@@ -233,6 +234,11 @@ void rkCDReset(rkCD *cd)
   }
 }
 
+void rkCDSetDefaultFricType(rkCD *cd, rkContactFricType type)
+{
+  cd->def_type = type;
+}
+
 /* rkCDPairReg
  * - register a pair of links in collision detector.
  */
@@ -300,12 +306,12 @@ void rkCDPairWrite(rkCD *cd)
   rkCDPair *cp;
   register int i = 0;
 
-  printf( "number : flag : chain1 shape1 : chain2 shape2\n" );
+  printf( "number : flag : chain1 link1 shape1 : chain2 link2 shape2\n" );
   zListForEach( &cd->plist, cp ){
-    printf( "%d : %s : %s %s : %s %s\n", i,
+    printf( "%d : %s : %s %s %s : %s %s %s\n", i,
       zBoolExpr(cp->data.is_col),
-      zName(cp->data.cell[0]->data.chain), zName(cp->data.cell[0]->data.shape),
-      zName(cp->data.cell[1]->data.chain), zName(cp->data.cell[1]->data.shape) );
+            zName(cp->data.cell[0]->data.chain),  zName(cp->data.cell[0]->data.link), zName(cp->data.cell[0]->data.shape),
+            zName(cp->data.cell[1]->data.chain),  zName(cp->data.cell[1]->data.link), zName(cp->data.cell[1]->data.shape) );
     i++;
   }
 }
@@ -457,14 +463,17 @@ void rkCDColChkGJKOnly(rkCD *cd)
   }
 }
 
-void _rkCDVertNorm(zPH3D *ph, zVec3D *vert, zVec3D *norm, zVec3D *pro)
+bool _rkCDVertNorm(zPH3D *ph, zVec3D *vert, zVec3D *norm, zVec3D *pro)
 {
   zPH3DClosest( ph, vert, pro );
   zVec3DSub( pro, vert, norm );
-  zVec3DNormalizeDRC( norm );
+  if( zVec3DIsTiny( norm ) ) return false;
+  zVec3DNormalizeNCDRC( norm );
+
+  return true;
 }
 
-rkCDVert *_rkCDVertReg(rkCDPair *pair, rkCDVertList *vlist, rkCDCell *cell0, int v_id)
+rkCDVert *_rkCDVertReg(rkCD *cd, rkCDPair *pair, rkCDVertList *vlist, rkCDCell *cell0, int v_id)
 {
   rkCDVert *v, *cp;
   zVec3D pro, sub, vert;
@@ -500,7 +509,10 @@ rkCDVert *_rkCDVertReg(rkCDPair *pair, rkCDVertList *vlist, rkCDCell *cell0, int
       flag = true;
     }
   if( zListIsEmpty( &pair->data.vlist ) || flag == false ){
-    _rkCDVertNorm( &cell1->data.ph, zPH3DVert(&cell0->data.ph, v_id), &v->data.norm, &v->data.pro );
+    if( !_rkCDVertNorm( &cell1->data.ph, zPH3DVert(&cell0->data.ph, v_id), &v->data.norm, &v->data.pro ) ){
+      zFree( v );
+      return NULL;
+    }
     zVec3DCopy( &v->data.pro, &v->data.ref );
     zVec3DCopy( &v->data.norm, &v->data.axis[0] );
     zVec3DOrthoSpace( &v->data.axis[0], &v->data.axis[1], &v->data.axis[2] );
@@ -510,17 +522,40 @@ rkCDVert *_rkCDVertReg(rkCDPair *pair, rkCDVertList *vlist, rkCDCell *cell0, int
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[0], &v->data._axis[0] );
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[1], &v->data._axis[1] );
     zXfer3DInv( rkLinkWldFrame(cell1->data.link), &v->data.axis[2], &v->data._axis[2] );
-    v->data.type = RK_CONTACT_SF;
+    v->data.type = cd->def_type;
   }
   zListInsertHead( vlist, v );
   return v;
 }
 
+int _rkCDPairColChkVert(rkCD *cd, rkCDPair *cp)
+{
+  rkCDVertList temp;
+  register int i;
+  int ret = 0;
+
+  zListInit( &temp );
+  for( i=0; i<zPH3DVertNum(&cp->data.cell[0]->data.ph); i++ )
+    if( zPH3DPointIsInside( &cp->data.cell[1]->data.ph, zPH3DVert(&cp->data.cell[0]->data.ph,i), false ) ){
+      if( _rkCDVertReg( cd, cp, &temp, cp->data.cell[0], i ) )
+        ret++;
+    }
+  for( i=0; i<zPH3DVertNum(&cp->data.cell[1]->data.ph); i++ )
+    if( zPH3DPointIsInside( &cp->data.cell[0]->data.ph, zPH3DVert(&cp->data.cell[1]->data.ph,i), false ) ){
+      if( _rkCDVertReg( cd, cp, &temp, cp->data.cell[1], i ) )
+        ret++;
+    }
+  zListDestroy( rkCDVert, &cp->data.vlist );
+  zListMove( &temp, &cp->data.vlist );
+  if( zListIsEmpty( &cp->data.vlist ) )
+    cp->data.is_col = false;
+
+  return ret;
+}
+
 void _rkCDColChkVert(rkCD *cd)
 {
   rkCDPair *cp;
-  rkCDVertList temp;
-  register int i;
 
   cd->colnum = 0;
   zListForEach( &cd->plist, cp ){
@@ -528,21 +563,7 @@ void _rkCDColChkVert(rkCD *cd)
       /* TO BE MODIFIED */
       rkCDCellUpdatePH( cp->data.cell[0] );
       rkCDCellUpdatePH( cp->data.cell[1] );
-      zListInit( &temp );
-      for( i=0; i<zPH3DVertNum(&cp->data.cell[0]->data.ph); i++ )
-        if( zPH3DPointIsInside( &cp->data.cell[1]->data.ph, zPH3DVert(&cp->data.cell[0]->data.ph,i), false ) ){
-          _rkCDVertReg( cp, &temp, cp->data.cell[0], i );
-          cd->colnum++;
-        }
-      for( i=0; i<zPH3DVertNum(&cp->data.cell[1]->data.ph); i++ )
-        if( zPH3DPointIsInside( &cp->data.cell[0]->data.ph, zPH3DVert(&cp->data.cell[1]->data.ph,i), false ) ){
-          _rkCDVertReg( cp, &temp, cp->data.cell[1], i );
-          cd->colnum++;
-        }
-      zListDestroy( rkCDVert, &cp->data.vlist );
-      zListMove( &temp, &cp->data.vlist );
-      if( zListIsEmpty( &cp->data.vlist ) )
-        cp->data.is_col = false;
+      cd->colnum += _rkCDPairColChkVert( cd, cp );
     } else{
       if( !zListIsEmpty( &cp->data.vlist ) )
         zListDestroy( rkCDVert, &cp->data.vlist );
@@ -572,12 +593,12 @@ void _rkCDColChkOBBVert(rkCD *cd)
       zListInit( &temp );
       for( i=0; i<zPH3DVertNum(&cp->data.cell[0]->data.ph); i++ )
         if( zPH3DPointIsInside( &cp->data.cell[1]->data.ph, zPH3DVert(&cp->data.cell[0]->data.ph,i), false ) ){
-          _rkCDVertReg( cp, &temp, cp->data.cell[0], i );
+          _rkCDVertReg( cd, cp, &temp, cp->data.cell[0], i );
           cd->colnum++;
         }
       for( i=0; i<zPH3DVertNum(&cp->data.cell[1]->data.ph); i++ )
         if( zPH3DPointIsInside( &cp->data.cell[0]->data.ph, zPH3DVert(&cp->data.cell[1]->data.ph,i), false ) ){
-          _rkCDVertReg( cp, &temp, cp->data.cell[1], i );
+          _rkCDVertReg( cd, cp, &temp, cp->data.cell[1], i );
           cd->colnum++;
         }
       zListDestroy( rkCDVert, &cp->data.vlist );
@@ -682,10 +703,47 @@ bool _rkCDColVolError(zPH3D *ph)
   return false;
 }
 
+int _rkCDPairColVolBREP(rkCDPair *cp)
+{
+  zBREP brep[2];
+  int ret = 0;
+
+  if( !zPH3D2BREP( &cp->data.cell[0]->data.ph, &brep[0] ) ||
+      !zPH3D2BREP( &cp->data.cell[1]->data.ph, &brep[1] ) ||
+      !zBREPTruncPH3D( &brep[0], &cp->data.cell[1]->data.ph ) ||
+      !zBREPTruncPH3D( &brep[1], &cp->data.cell[0]->data.ph ) ||
+      ( zListIsEmpty(&brep[0].vlist) && zListIsEmpty(&brep[1].vlist) ) ){
+    cp->data.is_col = false;
+    goto CONTINUE;
+  }
+  ret++;
+  /* norm */
+  _rkCDIntegrationNormBREP( &brep[0], &brep[1], &cp->data.norm );
+  /* merge */
+  _rkCDBREPMergeCH( &brep[0], &brep[1], &cp->data.colvol );
+  /* safety */
+  if( zArrayNum(&cp->data.colvol.vert) < 4 || zArrayNum(&cp->data.colvol.face) < 4 ||
+      _rkCDColVolError( &cp->data.colvol ) ){
+    cp->data.is_col = false;
+    ret--;
+    zPH3DDestroy( &cp->data.colvol );
+    goto CONTINUE;
+  }
+  /* axis */
+  zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
+  zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
+  /* center */
+  zPH3DBarycenter( &cp->data.colvol, &cp->data.center );
+ CONTINUE:
+  zBREPDestroy( &brep[0] );
+  zBREPDestroy( &brep[1] );
+
+  return ret;
+}
+
 void _rkCDColVolBREP(rkCD *cd)
 {
   rkCDPair *cp;
-  zBREP brep[2];
 
   cd->colnum = 0;
   zListForEach( &cd->plist, cp )
@@ -693,35 +751,7 @@ void _rkCDColVolBREP(rkCD *cd)
       /* TO BE MODIFIED */
       rkCDCellUpdatePH( cp->data.cell[0] );
       rkCDCellUpdatePH( cp->data.cell[1] );
-      if( !zPH3D2BREP( &cp->data.cell[0]->data.ph, &brep[0] ) ||
-          !zPH3D2BREP( &cp->data.cell[1]->data.ph, &brep[1] ) ||
-          !zBREPTruncPH3D( &brep[0], &cp->data.cell[1]->data.ph ) ||
-          !zBREPTruncPH3D( &brep[1], &cp->data.cell[0]->data.ph ) ||
-          ( zListIsEmpty(&brep[0].vlist) && zListIsEmpty(&brep[1].vlist) ) ){
-        cp->data.is_col = false;
-        goto CONTINUE;
-      }
-      cd->colnum++;
-      /* norm */
-      _rkCDIntegrationNormBREP( &brep[0], &brep[1], &cp->data.norm );
-      /* merge */
-      _rkCDBREPMergeCH( &brep[0], &brep[1], &cp->data.colvol );
-      /* safety */
-      if( zArrayNum(&cp->data.colvol.vert) < 4 || zArrayNum(&cp->data.colvol.face) < 4 ||
-          _rkCDColVolError( &cp->data.colvol ) ){
-        cp->data.is_col = false;
-        cd->colnum--;
-        zPH3DDestroy( &cp->data.colvol );
-        goto CONTINUE;
-      }
-      /* axis */
-      zVec3DCopy( &cp->data.norm ,&cp->data.axis[0] );
-      zVec3DOrthoSpace( &cp->data.axis[0], &cp->data.axis[1], &cp->data.axis[2] );
-      /* center */
-      zPH3DBarycenter( &cp->data.colvol, &cp->data.center );
-     CONTINUE:
-      zBREPDestroy( &brep[0] );
-      zBREPDestroy( &brep[1] );
+      cd->colnum += _rkCDPairColVolBREP( cp );
     }
 }
 
@@ -772,6 +802,33 @@ void rkCDColVolBREPFast(rkCD *cd)
 {
   rkCDColChkOBB( cd );
   _rkCDColVolBREPFast( cd );
+}
+
+void _rkCDColVolBREPVert(rkCD *cd)
+{
+  rkCDPair *cp;
+
+  cd->colnum = 0;
+  zListForEach( &cd->plist, cp ){
+    if( cp->data.is_col == true ){
+      /* TO BE MODIFIED */
+      rkCDCellUpdatePH( cp->data.cell[0] );
+      rkCDCellUpdatePH( cp->data.cell[1] );
+      if( cp->data.ci && rkContactInfoType(cp->data.ci) == RK_CONTACT_RIGID )
+        cd->colnum += _rkCDPairColVolBREP( cp );
+      else
+        cd->colnum += _rkCDPairColChkVert( cd, cp );
+    } else {
+      if( !zListIsEmpty( &cp->data.vlist ) )
+        zListDestroy( rkCDVert, &cp->data.vlist );
+    }
+  }
+}
+
+void rkCDColVolBREPVert(rkCD *cd)
+{
+  rkCDColChkOBB( cd );
+  _rkCDColVolBREPVert( cd );
 }
 
 /* for fd */

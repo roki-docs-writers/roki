@@ -5,7 +5,7 @@ LIB=`roki-config -L`
 LINK=`roki-config -l`
 
 CC=gcc
-CFLAGS=-ansi -Wall -O3 $(LIB) $(INCLUDE) -funroll-loops
+CFLAGS=-ansi -Wall -O3 $(LIB) $(INCLUDE) -funroll-loops -g
 
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $< $(LINK)

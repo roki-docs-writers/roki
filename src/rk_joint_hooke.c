@@ -320,6 +320,7 @@ static zVec3D* (*_rk_joint_axis_hooke_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_hooke = {
+  2,
   _rkJointLimDisHooke,
   _rkJointSetDisHooke,
   _rkJointSetVelHooke,
@@ -436,15 +437,8 @@ static rkJointABICom rk_joint_abi_hooke = {
   _rkJointABIAddBiasHooke,
   _rkJointABIDrivingTorqueHooke,
   _rkJointABIQAccHooke,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncHooke(rkJoint *j)
-{
-  j->com = &rk_joint_hooke;
-  j->mcom = &rk_joint_motor_hooke;
-  j->acom = &rk_joint_abi_hooke;
-  return j;
-}
 
 /* rkJointCreateHooke
  * - create universal joint instance.
@@ -458,8 +452,10 @@ rkJoint *rkJointCreateHooke(rkJoint *j)
   _rkc(j->prp)->max[1] = zPI;
   _rkc(j->prp)->min[1] =-zPI;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->size = 2;
-  return rkJointSetFuncHooke( j );
+  j->com = &rk_joint_hooke;
+  j->mcom = &rk_joint_motor_hooke;
+  j->acom = &rk_joint_abi_hooke;
+  return j;
 }
 
 #undef _rkc

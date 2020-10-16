@@ -32,7 +32,6 @@ typedef struct{
   double _u;
 } rkJointPrpRevol;
 
-__EXPORT rkJoint *rkJointSetFuncRevol(rkJoint *joint);
 __EXPORT rkJoint *rkJointCreateRevol(rkJoint *joint);
 
 __END_DECLS

@@ -244,6 +244,7 @@ static zVec3D* (*_rk_joint_axis_revol_lin[])(void*,zFrame3D*,zVec3D*) = {
   _rkJointAxisNull,
 };
 static rkJointCom rk_joint_revol = {
+  1,
   _rkJointLimDisRevol,
   _rkJointSetDisRevol,
   _rkJointSetVelRevol,
@@ -389,15 +390,8 @@ static rkJointABICom rk_joint_abi_revol = {
   _rkJointABIAddBiasRevol,
   _rkJointABIDrivingTorqueRevol,
   _rkJointABIQAccRevol,
+  _rkJointUpdateWrench,
 };
-
-rkJoint *rkJointSetFuncRevol(rkJoint *j)
-{
-  j->com = &rk_joint_revol;
-  j->mcom = &rk_joint_motor_revol;
-  j->acom = &rk_joint_abi_revol;
-  return j;
-}
 
 /* rkJointCreateRevol
  * - create revolutional joint instance.
@@ -409,8 +403,10 @@ rkJoint *rkJointCreateRevol(rkJoint *j)
   _rkc(j->prp)->max = zPI;
   _rkc(j->prp)->min =-zPI;
   rkMotorCreate( &_rkc(j->prp)->m, RK_MOTOR_NONE );
-  j->size = 1;
-  return rkJointSetFuncRevol( j );
+  j->com = &rk_joint_revol;
+  j->mcom = &rk_joint_motor_revol;
+  j->acom = &rk_joint_abi_revol;
+  return j;
 }
 
 #undef _rkc

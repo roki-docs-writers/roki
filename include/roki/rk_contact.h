@@ -162,10 +162,7 @@ __EXPORT void rkContactInfoPoolDestroy(rkContactInfoPool *ci);
  * set in \a ci matches the pair, the null pointer is returned.
  */
 __EXPORT rkContactInfo *rkContactInfoPoolAssoc(rkContactInfoPool *ci, char *stf1, char *stf2);
-
-/*! \brief associate contact information for a particular type to a pair of stuff.
- */
-__EXPORT rkContactInfo *rkContactInfoPoolTypeAssoc(rkContactInfoPool *ci, char *stf1, char *stf2, char type);
+__EXPORT rkContactInfo *rkContactInfoPoolAssocType(rkContactInfoPool *ci, char *stf1, char *stf2, char type);
 
 /*! \brief input/output of contact info pool.
  *

@@ -61,7 +61,7 @@ typedef struct{
 __EXPORT rkMotor *rkMotorCreate(rkMotor *m, byte type);
 __EXPORT void rkMotorDestroy(rkMotor *m);
 
-__EXPORT rkMotor *rkMotorClone(rkMotor *src, rkMotor *dst);
+__EXPORT rkMotor *rkMotorClone(rkMotor *org, rkMotor *cln);
 
 /* __EXPORT rkMotor *rkMotorCopyState(rkMotor *src, rkMotor *dst); */
 
@@ -88,6 +88,7 @@ __EXPORT void rkMotorFWrite(FILE *fp, rkMotor *m);
 #define RK_MOTOR_TAG "motor"
 zArrayClass( rkMotorArray, rkMotor );
 
+__EXPORT rkMotorArray *rkMotorArrayClone(rkMotorArray *org);
 __EXPORT rkMotorArray *rkMotorArrayFRead(FILE *fp, rkMotorArray *m);
 __EXPORT void rkMotorArrayFWrite(FILE *fp, rkMotorArray *m);
 

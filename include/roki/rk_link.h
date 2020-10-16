@@ -34,12 +34,6 @@ typedef struct{
   zMat axi, iaxi;
 } rkABIPrp;
 
-typedef struct{
-  bool is_broken;
-  double ep_f;
-  double ep_t;
-} rkBreakPrp;
-
 typedef struct _rkLink{
   Z_NAMED_CLASS
   rkJoint joint;     /*!< \brief joint */
@@ -47,13 +41,11 @@ typedef struct _rkLink{
   int offset;        /*!< \brief link identifier offset due to joint size */
   zFrame3D orgframe; /*!< \brief original adjacent transformation */
   zFrame3D adjframe; /*!< \brief adjacent transformation */
-  zVec6D wrench;     /*!< \brief joint wrench */
   struct _rkLink *parent; /*!< \brief a pointer to the parent link */
   struct _rkLink *child;  /*!< \brief a pointer to a child link */
   struct _rkLink *sibl;   /*!< \brief a pointer to a sibling link */
   /*! \cond */
   rkABIPrp _abiprp;  /* for ABI method */
-  rkBreakPrp *_bprp;
   void *_util;  /* for utility */
   /* additional property */
   /* 1: constraint list for inverse kinematics
@@ -96,14 +88,14 @@ typedef struct _rkLink{
 #define rkLinkWldPos(l)        rkBodyPos( rkLinkBody(l) )
 #define rkLinkWldAtt(l)        rkBodyAtt( rkLinkBody(l) )
 #define rkLinkWldCOM(l)        rkBodyWldCOM( rkLinkBody(l) )
-#define rkLinkWrench(l)        ( &(l)->wrench )
+#define rkLinkWrench(l)        rkJointWrench( rkLinkJoint(l) )
 #define rkLinkForce(l)         zVec6DLin(rkLinkWrench(l))
 #define rkLinkTorque(l)        zVec6DAng(rkLinkWrench(l))
 #define rkLinkParent(l)        (l)->parent
 #define rkLinkChild(l)         (l)->child
 #define rkLinkSibl(l)          (l)->sibl
 #define rkLinkABIPrp(l)        ( &(l)->_abiprp )
-#define rkLinkBreakPrp(l)        ( (l)->_bprp )
+#define rkLinkExtWrenchBuf(l)  ( &(l)->_abiprp.wlist )
 
 #define rkLinkSetOffset(l,o)   ( rkLinkOffset(l) = (o) )
 #define rkLinkSetMass(l,m)     rkBodySetMass( rkLinkBody(l), m )

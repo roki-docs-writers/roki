@@ -10,7 +10,7 @@
 /* joint type
  * ********************************************************** */
 static char *__rkjointtypename[] = {
-  "fix", "revolute", "prism", "cylinder", "hooke", "sphere", "float",
+  "fix", "revolute", "prism", "cylinder", "hooke", "sphere", "float", "breakablefloat",
   NULL
 };
 
@@ -19,7 +19,7 @@ static char *__rkjointtypename[] = {
  */
 char *rkJointTypeExpr(byte type)
 {
-  return __rkjointtypename[zLimit(type,RK_JOINT_FIXED,RK_JOINT_FLOAT)];
+  return __rkjointtypename[zLimit(type,RK_JOINT_FIXED,RK_JOINT_BRFLOAT)];
 }
 
 /* rkJointTypeFromStr
@@ -48,6 +48,7 @@ static rkJoint *(* rk_joint_create[])(rkJoint*) = {
   rkJointCreateHooke,
   rkJointCreateSpher,
   rkJointCreateFloat,
+  rkJointCreateBrFloat,
 };
 
 /* rkJointCreate
@@ -55,7 +56,7 @@ static rkJoint *(* rk_joint_create[])(rkJoint*) = {
  */
 rkJoint *rkJointCreate(rkJoint *j, byte type)
 {
-  if( type < RK_JOINT_FIXED || type > RK_JOINT_FLOAT ){
+  if( type < RK_JOINT_FIXED || type > RK_JOINT_BRFLOAT ){
     ZRUNERROR( "invalid joint type specified - %d", type );
     return NULL;
   }
@@ -99,6 +100,28 @@ bool rkJointIsNeutral(rkJoint *j)
   for( i=0; i<rkJointSize(j); i++ )
     if( !zIsTiny( dis[i] ) ) return false;
   return true;
+}
+
+/* rkJointClone
+ * - clone a joint .
+ */
+rkJoint *rkJointClone(rkJoint *org, rkJoint *cln)
+{
+  rkMotor *morg, *mcln;
+
+  if( !rkJointCreate( cln, rkJointType(org) ) ){
+    ZALLOCERROR();
+    return NULL;
+  }
+  rkJointCopyState( org, cln );
+  rkJointGetMotor( org, &morg );
+  rkJointGetMotor( cln, &mcln );
+  if( morg != NULL && mcln != NULL )
+    if( !rkMotorClone( morg, mcln ) ){
+      ZALLOCERROR();
+      return NULL;
+    }
+  return cln;
 }
 
 /* rkJointCopyState
@@ -191,4 +214,16 @@ zMat6D *rkJointXferMat6D(zFrame3D *f, zMat6D *i, zMat6D *m)
   zMat3DT( &tmpm, &tmpm );
   zMat3DAddDRC( zMat6DMat3D( m, 1, 1 ), &tmpm );
   return m;
+}
+
+/* void _rkJointUpdateWrench(void *prp, zMat6D *i, zVec6D *b, zVec6D *acc, zVec6D *w) */
+/* { */
+/*   zMulMat6DVec6D( i, acc, w ); */
+/*   zVec6DAddDRC( w, b ); */
+/* } */
+
+void _rkJointUpdateWrench(rkJoint *j, zMat6D *i, zVec6D *b, zVec6D *acc)
+{
+  zMulMat6DVec6D( i, acc, rkJointWrench(j) );
+  zVec6DAddDRC( rkJointWrench(j), b );
 }
