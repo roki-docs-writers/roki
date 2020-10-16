@@ -35,8 +35,8 @@ rkCDCell *_rkCDCellCreate(rkCDCell *cell, rkChain *chain, rkLink *link, zShape3D
   cell->data.link = link;
   cell->data.chain = chain;
   cell->data.type = type;
-  cell->data._ph_update_flag = 0;
-  cell->data._bb_update_flag = 0;
+  cell->data._ph_update_flag = false;
+  cell->data._bb_update_flag = false;
   /* convert the original shape to a polyhedron */
   if( zShape3DType(cell->data.shape) != ZSHAPE_PH )
     if( !zShape3DToPH( cell->data.shape ) ) return NULL;
@@ -87,10 +87,10 @@ rkCDCell *rkCDCellReg(rkCDCellList *clist, rkChain *chain, rkLink *link, zShape3
 void rkCDCellUpdateBB(rkCDCell *cell)
 {
   if( cell->data.type == RK_CD_CELL_STAT ||
-      cell->data._bb_update_flag == 1) return;
+      cell->data._bb_update_flag == true ) return;
   zBox3DXfer( zShape3DBB(cell->data.shape), rkLinkWldFrame(cell->data.link), &cell->data.obb );
   zBox3DToAABox3D( &cell->data.obb, &cell->data.aabb );
-  cell->data._bb_update_flag = 1;
+  cell->data._bb_update_flag = true;
 }
 
 /* rkCDCellUpdatePH
@@ -99,9 +99,9 @@ void rkCDCellUpdateBB(rkCDCell *cell)
 void rkCDCellUpdatePH(rkCDCell *cell)
 {
   if( cell->data.type == RK_CD_CELL_STAT ||
-      cell->data._ph_update_flag == 1) return;
+      cell->data._ph_update_flag == true ) return;
   zPH3DXfer( zShape3DPH(cell->data.shape), rkLinkWldFrame(cell->data.link), &cell->data.ph );
-  cell->data._ph_update_flag = 1;
+  cell->data._ph_update_flag = true;
 }
 
 /* rkCDCellUpdate
@@ -110,14 +110,14 @@ void rkCDCellUpdatePH(rkCDCell *cell)
 void rkCDCellUpdate(rkCDCell *cell)
 {
   if( cell->data.type == RK_CD_CELL_STAT ) return;
-  if( cell->data._bb_update_flag == 0 ){
+  if( cell->data._bb_update_flag == false ){
     zBox3DXfer( zShape3DBB(cell->data.shape), rkLinkWldFrame(cell->data.link), &cell->data.obb );
     zBox3DToAABox3D( &cell->data.obb, &cell->data.aabb );
-    cell->data._bb_update_flag = 1;
+    cell->data._bb_update_flag = true;
   }
-  if( cell->data._ph_update_flag == 0 ){
+  if( cell->data._ph_update_flag == false ){
     zPH3DXfer( zShape3DPH(cell->data.shape), rkLinkWldFrame(cell->data.link), &cell->data.ph );
-    cell->data._ph_update_flag = 1;
+    cell->data._ph_update_flag = true;
   }
 }
 
@@ -221,8 +221,8 @@ void rkCDReset(rkCD *cd)
     zPH3DDestroy( &pair->data.colvol );
   }
    zListForEach(&cd->clist, cell){
-    cell->data._ph_update_flag = 0;
-    cell->data._bb_update_flag = 0;
+    cell->data._ph_update_flag = false;
+    cell->data._bb_update_flag = false;
   }
 }
 
@@ -304,7 +304,7 @@ void rkCDPairWrite(rkCD *cd)
 }
 
 #define __vec_label_write(label,v) \
-  printf( "%s %g %g %g", label, zVec3DElem(v,zX), zVec3DElem(v,zY), zVec3DElem(v,zZ) )
+  printf( "%s %g %g %g", label, (v)->e[zX], (v)->e[zY], (v)->e[zZ] )
 
 void rkCDPairVertWrite(rkCD *cd)
 {
@@ -445,8 +445,7 @@ void rkCDColChkGJKOnly(rkCD *cd)
     /* TO BE MODIFIED */
     rkCDCellUpdatePH( cp->data.cell[0] );
     rkCDCellUpdatePH( cp->data.cell[1] );
-    if( zColChkPH3D( &cp->data.cell[0]->data.ph, &cp->data.cell[1]->data.ph,
-                     &v1, &v2 ) )
+    if( zColChkPH3D( &cp->data.cell[0]->data.ph, &cp->data.cell[1]->data.ph, &v1, &v2 ) )
       cp->data.is_col = true;
   }
 }
@@ -559,7 +558,8 @@ void _rkCDColChkOBBVert(rkCD *cd)
   cd->colnum = 0;
   zListForEach( &cd->plist, cp ){
     if( cp->data.is_col == true ){
-      /* TO BE MODIFIED */
+      zPH3DDestroy( &cp->data.cell[0]->data.ph );
+      zPH3DDestroy( &cp->data.cell[1]->data.ph );
       zBox3DToPH( &cp->data.cell[0]->data.obb, &cp->data.cell[0]->data.ph );
       zBox3DToPH( &cp->data.cell[1]->data.obb, &cp->data.cell[1]->data.ph );
       zListInit( &temp );

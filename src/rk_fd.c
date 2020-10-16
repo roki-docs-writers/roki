@@ -604,8 +604,8 @@ void _rkFDContactModForce(rkFD *fd, bool doUpRef)
       if( zIsTiny( zVec3DNorm( &vr ) ) ) zVec3DClear( &vr );
       else zVec3DNormalizeDRC( &vr );
 
-      fn = zVec3DElem( &cdv->data.f, 0 );
-      fs = sqrt( zSqr( zVec3DElem(&cdv->data.f,1) ) + zSqr( zVec3DElem( &cdv->data.f, 2 ) ) );
+      fn = cdv->data.f.e[zX];
+      fs = sqrt( zSqr(cdv->data.f.e[zY]) + zSqr(cdv->data.f.e[zZ]) );
 
       /* friction corn */
       if( !zIsTiny( fs ) &&
@@ -618,20 +618,18 @@ void _rkFDContactModForce(rkFD *fd, bool doUpRef)
         }
       } else{
         zVec3DClear( &f );
-        for( i=0; i<3; i++ ){
-          zVec3DCatDRC( &f, zVec3DElem(&cdv->data.f,i), &cdv->data.axis[i] );
-        }
-        if( doUpRef ){
+        for( i=zX; i<=zZ; i++ )
+          zVec3DCatDRC( &f, cdv->data.f.e[i], &cdv->data.axis[i] );
+        if( doUpRef )
           cdv->data.type = RK_CONTACT_STICK;
-        }
       }
 
       /* set wrench */
       for( i=0; i<2; i++){
         w = zAlloc( rkWrench, 1 );
         rkWrenchInit( w );
-        zXfer3DInv( rkLinkWldFrame( celld[i]->link ), cdv->data.vert, rkWrenchPos( w ) );
-        zMulMatTVec3D( rkLinkWldAtt( celld[i]->link ), &f, rkWrenchForce( w ) );
+        zXfer3DInv( rkLinkWldFrame(celld[i]->link), cdv->data.vert, rkWrenchPos(w) );
+        zMulMatTVec3D( rkLinkWldAtt(celld[i]->link), &f, rkWrenchForce(w) );
         rkLinkExtWrenchPush( celld[i]->link, w );
         zVec3DRevDRC( &f );
       }

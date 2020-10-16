@@ -23,26 +23,22 @@ void world_com_test(void)
 {
   zVec3D v, a;
 
-  printf( "%.10f %.10f %.10f ", zVec3DElem(rkChainLinkWldPos(&chain,1),zX), zVec3DElem(rkChainLinkWldPos(&chain,1),zY), zVec3DElem(rkChainLinkWldPos(&chain,1),zZ) );
+  zVec3DDataWrite( rkChainLinkWldPos(&chain,1) );
   zMulMatVec3D( rkChainLinkWldAtt(&chain,1), rkChainLinkCOMVel(&chain,1), &v );
-  printf( "%.10f %.10f %.10f ", zVec3DElem(&v,zX), zVec3DElem(&v,zY), zVec3DElem(&v,zZ) );
+  zVec3DDataWrite( &v );
   zMulMatVec3D( rkChainLinkWldAtt(&chain,1), rkChainLinkCOMAcc(&chain,1), &a );
-  printf( "%.10f %.10f %.10f ", zVec3DElem(&a,zX), zVec3DElem(&a,zY), zVec3DElem(&a,zZ) );
+  zVec3DDataWrite( &a );
 
-
-  printf( "%.10f %.10f %.10f ", zVec3DElem(rkChainWldCOM(&chain),zX), zVec3DElem(rkChainWldCOM(&chain),zY), zVec3DElem(rkChainWldCOM(&chain),zZ) );
-  zVec3DCopy( rkChainCOMVel(&chain), &v );
-  printf( "%.10f %.10f %.10f ", zVec3DElem(&v,zX), zVec3DElem(&v,zY), zVec3DElem(&v,zZ) );
-  zVec3DCopy( rkChainCOMAcc(&chain), &a );
-  printf( "%.10f %.10f %.10f ", zVec3DElem(&a,zX), zVec3DElem(&a,zY), zVec3DElem(&a,zZ) );
-
+  zVec3DDataWrite( rkChainWldCOM(&chain) );
+  zVec3DDataWrite( rkChainCOMVel(&chain) );
+  zVec3DDataWrite( rkChainCOMAcc(&chain) );
 
   zVec3DSub( rkChainWldCOM(&chain), &com, &v );
   zVec3DDivDRC( &v, DT );
-  printf( "%.10f %.10f %.10f ", zVec3DElem(&v,zX), zVec3DElem(&v,zY), zVec3DElem(&v,zZ) );
+  zVec3DDataWrite( &v );
   zVec3DSub( &v, &vel, &a );
   zVec3DDivDRC( &a, DT );
-  printf( "%.10f %.10f %.10f\n", zVec3DElem(&a,zX), zVec3DElem(&a,zY), zVec3DElem(&a,zZ) );
+  zVec3DDataNLWrite( &a );
 
   zVec3DCopy( rkChainWldCOM(&chain), &com );
   zVec3DCopy( &v, &vel );

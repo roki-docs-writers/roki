@@ -53,7 +53,7 @@ void world_ang_test(rkChain *chain, zMat jacobi, zVec3D *v)
 void world_lin_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
   eprintf( "World (linear) test\n" );
-  rkChainLinkWldLinJacobi( chain, TIP, Z_ZEROVEC3D, jacobi );
+  rkChainLinkWldLinJacobi( chain, TIP, ZVEC3DZERO, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkLinVel(chain,TIP), v );
 }
 
@@ -80,7 +80,7 @@ void l2l_lin_test(rkChain *chain, zMat jacobi, zVec3D *v)
   zVec3D av, vr, tmp;
 
   eprintf( "Link->Link (linear) test\n" );
-  rkChainLinkToLinkLinJacobi( chain, ANO, TIP, Z_ZEROVEC3D, jacobi );
+  rkChainLinkToLinkLinJacobi( chain, ANO, TIP, ZVEC3DZERO, jacobi );
   zMulMatVec3D( rkChainLinkWldAtt(chain,TIP), rkChainLinkLinVel(chain,TIP), v );
   zMulMatVec3D( rkChainLinkWldAtt(chain,ANO), rkChainLinkLinVel(chain,ANO), &av );
   zVec3DSubDRC( v, &av );
@@ -132,11 +132,6 @@ zFrame3DWrite(rkChainLinkWldFrame(&chain,TIP));
   zVec3DWrite( (zVec3D*)zVecBuf(ev) );
   zVec3DWrite( &v );
   zVec3DWrite( &err );
-/*
-  printf( "%g %g %g ",  zVecElem(ev,0), zVecElem(ev,1), zVecElem(ev,2) );
-  printf( "%g %g %g ",  zVec3DElem(&v,0), zVec3DElem(&v,1), zVec3DElem(&v,2) );
-  printf( "%g %g %g\n", zVec3DElem(&err,0), zVec3DElem(&err,1), zVec3DElem(&err,2) );
-*/
   printf( " ... %s.\n", zVec3DIsTiny( &err ) ? "OK" : "BUG probably in Jacobian matrix computation" );
 
   /* termination */

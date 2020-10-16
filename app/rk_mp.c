@@ -103,12 +103,12 @@ zMat3D *rk_mpShiftInertia(zMat3D *i, double m, zVec3D *s)
   zMat3D tmp;
   double xx, xy, yy, yz, zz, zx;
 
-  xx = zSqr(zVec3DElem(s,zX));
-  yy = zSqr(zVec3DElem(s,zY));
-  zz = zSqr(zVec3DElem(s,zZ));
-  xy = zVec3DElem(s,zX) * zVec3DElem(s,zY);
-  yz = zVec3DElem(s,zY) * zVec3DElem(s,zZ);
-  zx = zVec3DElem(s,zZ) * zVec3DElem(s,zX);
+  xx = zSqr(s->e[zX]);
+  yy = zSqr(s->e[zY]);
+  zz = zSqr(s->e[zZ]);
+  xy = s->e[zX] * s->e[zY];
+  yz = s->e[zY] * s->e[zZ];
+  zx = s->e[zZ] * s->e[zX];
   zMat3DCreate( &tmp,
     yy+zz,   -xy,    -zx,
       -xy, zz+xx,    -yz,

@@ -49,15 +49,17 @@ void destroy(rkChain *puma, rkChain *puma_v, rkIK *ik, zVec dis)
 
 void cmp(rkChain *ra, rkChain *rb)
 {
-  zVec3D v;
+  zVec3D v, e;
 
-  printf( "%g %g %g ", zVec3DElem(&des_vel,zX), zVec3DElem(&des_vel,zY), zVec3DElem(&des_vel,zZ) );
-  zMulMatVec3D( rkChainLinkWldAtt(ra,6), rkChainLinkLinVel(ra,6), &v );
-  printf( "%g %g %g ", zVec3DElem(&v,zX), zVec3DElem(&v,zY), zVec3DElem(&v,zZ) );
-  printf( "%g %g %g ", zVec3DElem(&des_vel,zX)-zVec3DElem(&v,zX), zVec3DElem(&des_vel,zY)-zVec3DElem(&v,zY), zVec3DElem(&des_vel,zZ)-zVec3DElem(&v,zZ) );
-  zMulMatVec3D( rkChainLinkWldAtt(rb,6), rkChainLinkLinVel(rb,6), &v );
-  printf( "%g %g %g ", zVec3DElem(&v,zX), zVec3DElem(&v,zY), zVec3DElem(&v,zZ) );
-  printf( "%g %g %g\n", zVec3DElem(&des_vel,zX)-zVec3DElem(&v,zX), zVec3DElem(&des_vel,zY)-zVec3DElem(&v,zY), zVec3DElem(&des_vel,zZ)-zVec3DElem(&v,zZ) );
+  zVec3DDataWrite( &des_vel );
+  zMulMatVec3D( rkChainLinkWldAtt(ra,6), rkChainLinkLinAcc(ra,6), &v );
+  zVec3DDataWrite( &v );
+  zVec3DSub( &des_vel, &v, &e );
+  zVec3DDataWrite( &e );
+  zMulMatVec3D( rkChainLinkWldAtt(rb,6), rkChainLinkLinAcc(rb,6), &v );
+  zVec3DDataWrite( &v );
+  zVec3DSub( &des_vel, &v, &e );
+  zVec3DDataNLWrite( &e );
 }
 
 int main(int argc, char *argv[])
@@ -74,9 +76,9 @@ int main(int argc, char *argv[])
   init( &pumaA, &pumaA_v, &ikA, rkIKLinkWldPosErr, &disA, cellA );
   /* type B: configuration space tracking */
   init( &pumaB, &pumaB_v, &ikB, pos_srv, &disB, cellB );
-  x = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zX);
-  y = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zY);
-  z = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zZ);
+  x = rkChainLinkWldPos(&pumaA,6)->e[zX];
+  y = rkChainLinkWldPos(&pumaA,6)->e[zY];
+  z = rkChainLinkWldPos(&pumaA,6)->e[zZ];
 
   fpA = fopen( "a.zvs", "w" );
   fpB = fopen( "b.zvs", "w" );
@@ -85,9 +87,9 @@ int main(int argc, char *argv[])
     phase = 6 * zPI * i / step;
     zVec3DCreate( &des_vel, 0.1*cos(phase), 0.1*sin(2*phase), 0.05*sin(phase) );
 
-    x += zVec3DElem(&des_vel,zX) * DT;
-    y += zVec3DElem(&des_vel,zY) * DT;
-    z += zVec3DElem(&des_vel,zZ) * DT;
+    x += des_vel.e[zX] * DT;
+    y += des_vel.e[zY] * DT;
+    z += des_vel.e[zZ] * DT;
     rkIKCellSetRef( cellA[1], x, y, z );
     rkIKSolve( &ikA, disA, zTOL, 1000 );
     rkChainFKCNT( &pumaA, disA, DT );

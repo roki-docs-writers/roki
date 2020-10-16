@@ -284,8 +284,8 @@ int _rkIKCellEq(rkIK *ik, rkIKCell *cell, int s, int row)
   register int i, j;
 
   if( !( ( RK_IK_CELL_XON << s ) & cell->data.attr.mode ) ) return 0;
-  zVecSetElem( ik->_c_srv, row, zVec3DElem(&ik->_c_srv_cell,s) );
-  zVecSetElem( ik->_c_we, row, zVec3DElem(&cell->data.attr.w,s) );
+  zVecSetElem( ik->_c_srv, row, ik->_c_srv_cell.e[s] );
+  zVecSetElem( ik->_c_we, row, cell->data.attr.w.e[s] );
   for( i=0; i<rkChainNum(ik->chain); i++ )
     if( ik->joint_sw[i] ){
       for( j=0; j<rkChainLinkJointSize(ik->chain,i); j++ )

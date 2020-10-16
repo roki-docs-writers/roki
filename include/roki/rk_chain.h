@@ -399,6 +399,18 @@ __EXPORT void rkChainExtWrenchDestroy(rkChain *c);
  */
 __EXPORT void rkChainSetOffset(rkChain *c);
 
+/*! \brief make a list of vertices of a chain.
+ *
+ * rkChain2VertList() makes a list of vertices of a chain \a chain
+ * with respect to the world coordinate frame. The result is put
+ * into \a vl.
+ * \return
+ * rkChain2VertList() returns a pointer \a vl if succeeds. If it
+ * fails to allocate memory to store vertices, the null pointer is
+ * returned.
+ */
+__EXPORT zVec3DList *rkChain2VertList(rkChain *chain, zVec3DList *vl);
+
 #define RK_CHAIN_SUFFIX "zkc"
 #define RK_CHAIN_INIT_SUFFIX "zkci"
 

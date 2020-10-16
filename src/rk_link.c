@@ -146,7 +146,7 @@ void rkLinkUpdateRate(rkLink *l, zVec6D *pvel, zVec6D *pacc)
   zVec3DAddDRC( rkLinkLinAcc(l), &tmp );
   zMulMatTVec6DDRC( rkLinkAdjAtt(l), rkLinkAcc(l) );
   /* joint motion rate */
-  zVec6DCopy( rkLinkAngVel(l), &tmp );
+  zVec3DCopy( rkLinkAngVel(l), &tmp );
   rkJointIncRate( rkLinkJoint(l), &tmp, rkLinkVel(l), rkLinkAcc(l) );
   /* COM velocity and acceleration */
   rkBodyUpdateCOMRate( rkLinkBody(l) );

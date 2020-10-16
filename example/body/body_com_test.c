@@ -23,13 +23,12 @@ void output(rkBody *body)
   zMulMatVec3D( rkBodyAtt(body), rkBodyCOMAcc(body), &comacc );
   zMulMatVec3D( rkBodyAtt(body), rkBodyAngVel(body), &vel );
   zMulMatVec3D( rkBodyAtt(body), rkBodyAngAcc(body), &acc );
-  printf( "%g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g\n",
-    zVec3DElem(rkBodyWldCOM(body),zX), zVec3DElem(rkBodyWldCOM(body),zY), zVec3DElem(rkBodyWldCOM(body),zZ),
-    zVec3DElem(&comvel,zX), zVec3DElem(&comvel,zY), zVec3DElem(&comvel,zZ),
-    zVec3DElem(&comacc,zX), zVec3DElem(&comacc,zY), zVec3DElem(&comacc,zZ),
-    zVec3DElem(&aa,zX), zVec3DElem(&aa,zY), zVec3DElem(&aa,zZ),
-    zVec3DElem(&vel,zX), zVec3DElem(&vel,zY), zVec3DElem(&vel,zZ),
-    zVec3DElem(&acc,zX), zVec3DElem(&acc,zY), zVec3DElem(&acc,zZ) );
+  zVec3DDataWrite( rkBodyWldCOM(body) );
+  zVec3DDataWrite( &comvel );
+  zVec3DDataWrite( &comacc );
+  zVec3DDataWrite( &aa );
+  zVec3DDataWrite( &vel );
+  zVec3DDataNLWrite( &acc );
 }
 
 #define DIV 1000

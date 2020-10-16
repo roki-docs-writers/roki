@@ -391,10 +391,7 @@ void rkChainSetConf(rkChain *chain, zVec conf)
  */
 zVec3D *rkChainGravityDir(rkChain *c, zVec3D *v)
 {
-  return zVec3DCreate( v,
-    zMat3DElem(rkChainRootAtt(c),2,0),
-    zMat3DElem(rkChainRootAtt(c),2,1),
-    zMat3DElem(rkChainRootAtt(c),2,2) );
+  return zMat3DRow( rkChainRootAtt(c), 2, v );
 }
 
 /* rkChainUpdateFK, rkChainFK
@@ -503,7 +500,7 @@ zVec3D *rkChainZMP(rkChain *c, double z, zVec3D *zmp)
   if( zIsTiny( ( f = zVec3DInnerProd( &dz, rkChainRootForce(c) ) ) ) )
     return NULL; /* ZMP does not exist (floating). */
   zVec3DOuterProd( &dz, rkChainRootTorque(c), zmp );
-  zVec3DCatDRC( zmp, z-zVec3DElem(rkChainRootPos(c),zZ), rkChainRootForce(c) );
+  zVec3DCatDRC( zmp, z-rkChainRootPos(c)->e[zZ], rkChainRootForce(c) );
   zVec3DDivDRC( zmp, f );
   return zXfer3DDRC( rkChainRootFrame(c), zmp );
 }
@@ -593,6 +590,32 @@ void rkChainSetOffset(rkChain *c)
       s += rkChainLinkJointSize(c,i);
     } else
       rkLinkSetOffset( rkChainLink(c,i), -1 );
+}
+
+/* rkChain2VertList
+ * - make a list of vertices of a chain.
+ */
+zVec3DList *rkChain2VertList(rkChain *chain, zVec3DList *vl)
+{
+  zVec3D v;
+  zShapeListCell *sc;
+  rkLink *l;
+  register int i, j;
+
+  zListInit( vl );
+  for( i=0; i<rkChainNum(chain); i++ ){
+    l = rkChainLink(chain,i);
+    zListForEach( rkLinkShapeList(l), sc ){
+      for( j=0; j<zShape3DVertNum(sc->data); j++ ){
+        zXfer3D( rkLinkWldFrame(l), zShape3DVert(sc->data,j), &v );
+        if( !zVec3DListInsert( vl, &v, true ) ){
+          zVec3DListDestroy( vl, true );
+          return NULL;
+        }
+      }
+    }
+  }
+  return vl;
 }
 
 static rkChain *_rkChainLinkFAlloc(FILE *fp, rkChain *c);

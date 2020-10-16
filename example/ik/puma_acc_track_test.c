@@ -51,15 +51,17 @@ void destroy(rkChain *puma, rkChain *puma_v, rkIK *ik, zVec dis)
 
 void cmp(rkChain *ra, rkChain *rb)
 {
-  zVec3D a;
+  zVec3D a, e;
 
-  printf( "%g %g %g ", zVec3DElem(&des_acc,zX), zVec3DElem(&des_acc,zY), zVec3DElem(&des_acc,zZ) );
+  zVec3DDataWrite( &des_acc );
   zMulMatVec3D( rkChainLinkWldAtt(ra,6), rkChainLinkLinAcc(ra,6), &a );
-  printf( "%g %g %g ", zVec3DElem(&a,zX), zVec3DElem(&a,zY), zVec3DElem(&a,zZ) );
-  printf( "%g %g %g ", zVec3DElem(&des_acc,zX)-zVec3DElem(&a,zX), zVec3DElem(&des_acc,zY)-zVec3DElem(&a,zY), zVec3DElem(&des_acc,zZ)-zVec3DElem(&a,zZ) );
+  zVec3DDataWrite( &a );
+  zVec3DSub( &des_acc, &a, &e );
+  zVec3DDataWrite( &e );
   zMulMatVec3D( rkChainLinkWldAtt(rb,6), rkChainLinkLinAcc(rb,6), &a );
-  printf( "%g %g %g ", zVec3DElem(&a,zX), zVec3DElem(&a,zY), zVec3DElem(&a,zZ) );
-  printf( "%g %g %g\n", zVec3DElem(&des_acc,zX)-zVec3DElem(&a,zX), zVec3DElem(&des_acc,zY)-zVec3DElem(&a,zY), zVec3DElem(&des_acc,zZ)-zVec3DElem(&a,zZ) );
+  zVec3DDataWrite( &a );
+  zVec3DSub( &des_acc, &a, &e );
+  zVec3DDataNLWrite( &e );
 }
 
 int main(int argc, char *argv[])
@@ -77,9 +79,9 @@ int main(int argc, char *argv[])
   init( &pumaA, &pumaA_v, &ikA, rkIKLinkWldPosErr, &disA, cellA );
   /* type B: configuration space tracking */
   init( &pumaB, &pumaB_v, &ikB, pos_srv, &disB, cellB );
-  x = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zX);
-  y = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zY);
-  z = zVec3DElem(rkChainLinkWldPos(&pumaA,6),zZ);
+  x = rkChainLinkWldPos(&pumaA,6)->e[zX];
+  y = rkChainLinkWldPos(&pumaA,6)->e[zY];
+  z = rkChainLinkWldPos(&pumaA,6)->e[zZ];
 
   fpA = fopen( "a.zvs", "w" );
   fpB = fopen( "b.zvs", "w" );
@@ -90,9 +92,9 @@ int main(int argc, char *argv[])
     zMulMatVec3D( rkChainLinkWldAtt(&pumaA,6), rkChainLinkLinVel(&pumaA,6), &v );
     zVec3DCatDRC( &v, DT, &des_acc );
 
-    x += zVec3DElem(&v,zX) * DT;
-    y += zVec3DElem(&v,zY) * DT;
-    z += zVec3DElem(&v,zZ) * DT;
+    x += v.e[zX] * DT;
+    y += v.e[zY] * DT;
+    z += v.e[zZ] * DT;
     rkIKCellSetRef( cellA[1], x, y, z );
     rkIKSync( &ikA, &pumaA );
     rkIKSolve( &ikA, disA, zTOL, 1000 );

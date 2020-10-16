@@ -174,8 +174,8 @@ void _rkJointCalcTrqHooke(void *prp, zVec6D *f)
   rkJointPrpHooke *p;
 
   p = prp;
-  p->trq[0] =-p->_s[1]*zVec6DElem(f,zXA)+p->_c[1]*zVec6DElem(f,zZA);
-  p->trq[1] = zVec6DElem(f,zYA);
+  p->trq[0] =-p->_s[1]*f->e[zXA]+p->_c[1]*f->e[zZA];
+  p->trq[1] = f->e[zYA];
 }
 
 void _rkJointSetFricHooke(void *prp, double *val)
@@ -219,24 +219,24 @@ void _rkJointTorsionHooke(zFrame3D *dev, zVec6D *t, double dis[])
 
   r = zFrame3DAtt(dev);
   zMulMatTVec3D( r, zFrame3DPos(dev), zVec6DLin(t) );
-  qx = atan2( zMat3DElem(r,2,1), zMat3DElem(r,1,1) );
+  qx = atan2( r->e[1][2], r->e[1][1] );
   zMat3DRow( r, 0, zVec6DAng(t) );
   zVec3DMulDRC( zVec6DAng(t), qx );
   zSinCos( qx, &s, &c );
-  dis[0] = atan2( -zMat3DElem(r,0,1), c*zMat3DElem(r,1,1)+s*zMat3DElem(r,2,1) );
+  dis[0] = atan2( -r->e[1][0], c*r->e[1][1]+s*r->e[1][2] );
   c = cos(dis[0]);
-  dis[1] = atan2( c*zMat3DElem(r,0,2), c*zMat3DElem(r,0,0) );
+  dis[1] = atan2( c*r->e[2][0], c*r->e[0][0] );
 }
 
 /* joint axis function */
 zVec3D *_rkJointAngAxisHooke1(void *prp, zFrame3D *f, zVec3D *a)
 {
-  zVec3DMul( zMat3DVec(zFrame3DAtt(f),zX),-_rkc(prp)->_s[1], a );
-  return zVec3DCatDRC( a, _rkc(prp)->_c[1], zMat3DVec(zFrame3DAtt(f),zZ) );
+  zVec3DMul( &zFrame3DAtt(f)->v[zX],-_rkc(prp)->_s[1], a );
+  return zVec3DCatDRC( a, _rkc(prp)->_c[1], &zFrame3DAtt(f)->v[2] );
 }
 
 zVec3D *_rkJointAngAxisHooke2(void *prp, zFrame3D *f, zVec3D *a){
-  zVec3DCopy( zMat3DVec(zFrame3DAtt(f),zY), a );
+  zVec3DCopy( &zFrame3DAtt(f)->v[1], a );
   return a;
 }
 
@@ -393,10 +393,10 @@ void _rkJointABIAxisInertiaHooke(void *prp, zMat6D *m, zMat h)
 
   p = prp;
   m22 = zMat6DMat3D(m, 1, 1);
-  zMatElem(h, 0, 0) = zMat3DElem(m22, 0, 0)*p->_s[1]*p->_s[1] - (zMat3DElem(m22, 0, 2) + zMat3DElem(m22, 2, 0))*p->_s[1]*p->_c[1] + zMat3DElem(m22, 2, 2)*p->_c[1]*p->_c[1];
-  zMatElem(h, 1, 0) = zMat3DElem(m22, 1, 2)*p->_c[1] - zMat3DElem(m22, 1, 0)*p->_s[1];
-  zMatElem(h, 0, 1) = zMat3DElem(m22, 2, 1)*p->_c[1] - zMat3DElem(m22, 0, 1)*p->_s[1];
-  zMatElem(h, 1, 1) = zMat3DElem(m22, 1, 1);
+  zMatElem(h,0,0) = m22->e[0][0]*p->_s[1]*p->_s[1] - (m22->e[2][0] + m22->e[0][2])*p->_s[1]*p->_c[1] + m22->e[2][2]*p->_c[1]*p->_c[1];
+  zMatElem(h,1,0) = m22->e[2][1]*p->_c[1] - m22->e[0][1]*p->_s[1];
+  zMatElem(h,0,1) = m22->e[1][2]*p->_c[1] - m22->e[1][0]*p->_s[1];
+  zMatElem(h,1,1) = m22->e[1][1];
 }
 
 void _rkJointABIAddAbiBiosHooke(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb)

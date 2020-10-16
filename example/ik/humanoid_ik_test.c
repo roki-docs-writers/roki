@@ -14,12 +14,15 @@
 void ik_cell_output(FILE *fp, double dt, zVec3D *pg, zVec3D *pl, zVec3D *pr)
 {
   fprintf( fp, "%.10g 6 ", dt );
-  fprintf( fp, " 0 1 1 1 %.10g %.10g %.10g 1 1 1 1 0 0 0",
-    zVec3DElem(pg,zX), zVec3DElem(pg,zY), zVec3DElem(pg,zZ) );
-  fprintf( fp, " 2 1 1 1 %.10g %.10g %.10g 3 1 1 1 0 0 0",
-    zVec3DElem(pl,zX), zVec3DElem(pl,zY), zVec3DElem(pl,zZ) );
-  fprintf( fp, " 4 1 1 1 %.10g %.10g %.10g 5 1 1 1 0 0 0\n",
-    zVec3DElem(pr,zX), zVec3DElem(pr,zY), zVec3DElem(pr,zZ) );
+  fprintf( fp, " 0 1 1 1" );
+  zVec3DDataFWrite( fp, pg );
+  fprintf( fp, " 1 1 1 1 0 0 0" );
+  fprintf( fp, " 2 1 1 1" );
+  zVec3DDataFWrite( fp, pl );
+  fprintf( fp, " 3 1 1 1 0 0 0" );
+  fprintf( fp, " 4 1 1 1" );
+  zVec3DDataFWrite( fp, pr );
+  fprintf( fp, " 5 1 1 1 0 0 0\n" );
 }
 
 void ik_solve(FILE *fout_vs, FILE *fout_cs, rkIK *ik, rkIKCell *entry[], zVec q, zVec3D *pg, zVec3D *pl, zVec3D *pr)

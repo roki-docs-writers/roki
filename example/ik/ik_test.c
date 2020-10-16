@@ -49,12 +49,12 @@ int main(int argc, char *argv[])
 
   attr.id = 3;
   zVec3DClear( &attr.ap );
-  cell[0] = rkIKCellRegWldPos( &ik, &attr );
-  cell[1] = rkIKCellRegWldAtt( &ik, &attr );
+  cell[0] = rkIKCellRegWldPos( &ik, &attr, RK_IK_CELL_ATTR_ID );
+  cell[1] = rkIKCellRegWldAtt( &ik, &attr, RK_IK_CELL_ATTR_ID );
 
   rkIKDeactivate( &ik );
   rkIKBind( &ik ); /* bind current status to the reference. */
-  zVec3DElem( &cell[0]->data.ref.pos, zX ) -= 1.0;
+  cell[0]->data.ref.pos.e[zX] -= 1.0;
   zMat3DRotYaw( ZMAT3DIDENT, zDeg2Rad(45), &cell[1]->data.ref.att );
 
   printf( "++ initial frame\n" );

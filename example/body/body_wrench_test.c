@@ -15,11 +15,10 @@ void init_mp(rkBody *body)
 
 void output(rkBody *body, zVec6D *f)
 {
-  printf( "%g %g %g %g %g %g %g %g %g %g %g %g\n",
-    zVec3DElem(rkBodyCOMAcc(body),zX), zVec3DElem(rkBodyCOMAcc(body),zY), zVec3DElem(rkBodyCOMAcc(body),zZ),
-    zVec6DElem(f,zX), zVec6DElem(f,zY), zVec6DElem(f,zZ),
-    zVec3DElem(rkBodyAngAcc(body),zX), zVec3DElem(rkBodyAngAcc(body),zY), zVec3DElem(rkBodyAngAcc(body),zZ),
-    zVec6DElem(f,zXA), zVec6DElem(f,zYA), zVec6DElem(f,zZA) );
+  zVec3DDataWrite( rkBodyCOMAcc(body) );
+  zVec3DDataWrite( zVec6DLin(f) );
+  zVec3DDataWrite( rkBodyAngAcc(body) );
+  zVec3DDataWrite( zVec6DAng(f) );
 }
 
 #define DIV 1000

@@ -17,7 +17,8 @@ void check(rkJoint *joint, zVec6D *t, double dis[], zFrame3D *f)
   rkJointSetDis( joint, dis );
   rkJointXfer( joint, &fo, &fc );
   zFrame3DError( &fc, f, &err );
-  printf( "(error)=%f %f %f %f %f %f\n", zVec6DElem(&err,0), zVec6DElem(&err,1), zVec6DElem(&err,2), zVec6DElem(&err,3), zVec6DElem(&err,4), zVec6DElem(&err,5) );
+  printf( "(error)=" );
+  zVec6DDataNLWrite( &err );
   printf( "hit enter key." ); fflush( stdout );
   getchar();
 }

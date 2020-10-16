@@ -257,9 +257,9 @@ bool rkJointIsNeutral(rkJoint *j);
  * about z-axis and y-axis in radian.
  * Spherical joint revolves \a fo with the displacements as z-y-x
  * Eulerian angles.
- * And, free-floating joint translates \a fo three-dimensionaly
- * with the first three displacements, and revolves it with the
- * rest three as z-y-x Eulerian angles.
+ * Free-floating joint translates \a fo three-dimensionaly with
+ * the first three displacements, and revolves it with the rest
+ * three as z-y-x Eulerian angles.
  *
  * rkJointIncRate() increments the given spatial velocity \a vel
  * and acceleration vector \a acc according to the local joint

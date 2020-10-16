@@ -112,7 +112,8 @@ void rk_fkOutput(FILE *fp, double t)
 
   p = rkLinkWldPos(link);
   zMat3DToZYX( rkLinkWldAtt(link), &rpy );
-  fprintf( fp, "%f %.10f %.10f %.10f %.10f %.10f %.10f\n", t, zVec3DElem(p,zX), zVec3DElem(p,zY), zVec3DElem(p,zZ), zVec3DElem(&rpy,zX), zVec3DElem(&rpy,zY), zVec3DElem(&rpy,zZ) );
+  fprintf( fp, "%f %.10f %.10f %.10f %.10f %.10f %.10f\n", t,
+    p->e[zX], p->e[zY], p->e[zZ], rpy.e[zX], rpy.e[zY], rpy.e[zZ] );
 }
 
 /* ******************************************************* */

@@ -110,7 +110,7 @@ void _rkJointSetDisCNTPrism(void *prp, double *val, double dt)
 zFrame3D *_rkJointXferPrism(void *prp, zFrame3D *fo, zFrame3D *f)
 {
   zVec3DCat( zFrame3DPos(fo),
-    _rkc(prp)->dis, zMat3DVec(zFrame3DAtt(fo),zZ), zFrame3DPos(f) );
+    _rkc(prp)->dis, &zFrame3DAtt(fo)->v[2], zFrame3DPos(f) );
   zMat3DCopy( zFrame3DAtt(fo), zFrame3DAtt(f) );
   return f;
 }
@@ -118,21 +118,21 @@ zFrame3D *_rkJointXferPrism(void *prp, zFrame3D *fo, zFrame3D *f)
 /* joint velocity transfer function */
 void _rkJointIncVelPrism(void *prp, zVec3D *w, zVec6D *vel, zVec6D *acc)
 {
-  zVec6DElem(vel,zZ) += _rkc(prp)->vel;
-  zVec6DElem(acc,zX) += 2 * _rkc(prp)->vel * zVec3DElem(w,zY);
-  zVec6DElem(acc,zY) -= 2 * _rkc(prp)->vel * zVec3DElem(w,zX);
+  vel->e[zZ] += _rkc(prp)->vel;
+  acc->e[zX] += 2 * _rkc(prp)->vel * w->e[zY];
+  acc->e[zY] -= 2 * _rkc(prp)->vel * w->e[zX];
 }
 
 /* joint acceleration transfer function */
 void _rkJointIncAccPrism(void *prp, zVec6D *acc)
 {
-  zVec6DElem(acc,zZ) += _rkc(prp)->acc;
+  acc->e[zZ] += _rkc(prp)->acc;
 }
 
 /* joint torque transfer function */
 void _rkJointCalcTrqPrism(void *prp, zVec6D *f)
 {
-  _rkc(prp)->trq = zVec6DElem(f,zZ);
+  _rkc(prp)->trq = f->e[zZ];
 }
 
 /* inverse computation of joint torsion and displacement */
@@ -306,7 +306,7 @@ static void _rkJointABIQAccPrism(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVe
 
 void _rkJointABIAxisInertiaPrism(void *prp, zMat6D *m, zMat h)
 {
-  zMatElem(h, 0, 0) = zMat3DElem(zMat6DMat3D(m, 0, 0), zZ, zZ);
+  zMatElem(h,0,0) = zMat6DMat3D(m,0,0)->e[2][2];
 }
 
 void _rkJointABIAddAbiBiosPrism(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pI, zVec6D *pb)
@@ -316,18 +316,18 @@ void _rkJointABIAddAbiBiosPrism(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat
   double u = 0.0, val;
 
   /* I */
-  zMat3DCol(zMat6DMat3D(I, 0, 0), zZ, zVec6DLin(&tempv));
-  zMat3DCol(zMat6DMat3D(I, 1, 0), zZ, zVec6DAng(&tempv));
-  zMat3DRow(zMat6DMat3D(I, 0, 0), zZ, zVec6DLin(&tempv2));
-  zMat3DRow(zMat6DMat3D(I, 0, 1), zZ, zVec6DAng(&tempv2));
-  zVec6DMulDRC(&tempv, -1.0*zMatElem(h, 0, 0));
-  zMat6DDyad(&tempv, &tempv2, &tempm);
-  zMat6DAddDRC(&tempm, I);
+  zMat3DCol( zMat6DMat3D(I,0,0), zZ, zVec6DLin(&tempv) );
+  zMat3DCol( zMat6DMat3D(I,1,0), zZ, zVec6DAng(&tempv) );
+  zMat3DRow( zMat6DMat3D(I,0,0), zZ, zVec6DLin(&tempv2) );
+  zMat3DRow( zMat6DMat3D(I,0,1), zZ, zVec6DAng(&tempv2) );
+  zVec6DMulDRC( &tempv, -1.0*zMatElem(h,0,0) );
+  zMat6DDyad( &tempv, &tempv2, &tempm );
+  zMat6DAddDRC( &tempm, I );
 
-  zMulMatMat6D(J, &tempm, &tempm2);
-  zMulMatMatT6D(&tempm2, J, &tempm);
+  zMulMatMat6D( J, &tempm, &tempm2 );
+  zMulMatMatT6D( &tempm2, J, &tempm );
 
-  zMat6DAddDRC(pI, &tempm);
+  zMat6DAddDRC( pI, &tempm );
 
   /* b */
   _rkJointMotorInputTrqPrism( prp, &val );
@@ -335,11 +335,11 @@ void _rkJointABIAddAbiBiosPrism(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat
   _rkJointMotorResistancePrism( prp, &val );
   u -= val;
   u += _rkc(prp)->tf;
-  zVec6DMulDRC(&tempv, u - zVec6DElem(b, zZ));
-  zVec6DSub(b, &tempv, &tempv2);
+  zVec6DMulDRC( &tempv, u - b->e[zZ] );
+  zVec6DSub( b, &tempv, &tempv2 );
 
-  zMulMat6DVec6D(J, &tempv2, &tempv);
-  zVec6DAddDRC(pb, &tempv);
+  zMulMat6DVec6D( J, &tempv2, &tempv );
+  zVec6DAddDRC( pb, &tempv );
 }
 
 void _rkJointABIQAccPrism(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *jac, zMat h, zVec6D *acc)
@@ -347,19 +347,19 @@ void _rkJointABIQAccPrism(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *ja
   zVec6D tempv;
   double u, val;
 
-  zMat3DRow(zMat6DMat3D(I, 0, 0), zZ, zVec6DLin(&tempv));
-  zMat3DRow(zMat6DMat3D(I, 0, 1), zZ, zVec6DAng(&tempv));
+  zMat3DRow( zMat6DMat3D(I,0,0), zZ, zVec6DLin(&tempv) );
+  zMat3DRow( zMat6DMat3D(I,0,1), zZ, zVec6DAng(&tempv) );
   /* u */
   _rkJointMotorInputTrqPrism( prp, &val );
   u = val;
   _rkJointMotorResistancePrism( prp, &val );
   u -= val;
   u += _rkc(prp)->tf;
-  _rkc(prp)->acc = zMatElem(h, 0, 0)*(u - zVec6DInnerProd(&tempv, jac) - zVec6DElem(b, zZ));
+  _rkc(prp)->acc = zMatElem(h,0,0)*( u - zVec6DInnerProd( &tempv, jac ) - b->e[zZ] );
 
   /* acc */
   zVec6DCopy( jac, acc );
-  zVec6DElem( acc, zZ ) += _rkc(prp)->acc;
+  acc->e[zZ] += _rkc(prp)->acc;
 }
 
 static rkJointABICom rk_joint_abi_prism = {

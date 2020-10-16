@@ -118,7 +118,7 @@ void _rkJointSetDisCNTFloat(void *prp, double *val, double dt)
   /* previous state */
   zVec3DCopy( zVec6DLin(&_rkc(prp)->dis), &p_old );
   zMat3DCopy( &_rkc(prp)->_att, &m_old );
-  _rkJointGetVelFloat( prp, zVec6DArray(&v_old) );
+  _rkJointGetVelFloat( prp, v_old.e );
   /* update displacement */
   _rkJointSetDisFloat( prp, val );
   /* numerical differentiation */
@@ -204,7 +204,7 @@ bool _rkJointQueryFReadFloat(FILE *fp, char *buf, void *prp, rkMotor *marray, in
 
   if( strcmp( buf, "dis" ) == 0 ){
     zVec6DFRead( fp, &dis );
-    _rkJointSetDisFloat( prp, zVec6DArray(&dis) );
+    _rkJointSetDisFloat( prp, dis.e );
     return true;
   }
   return false;
@@ -214,12 +214,8 @@ void _rkJointFWriteFloat(FILE *fp, void *prp, char *name)
 {
   if( !zVec6DIsTiny( &_rkc(prp)->dis ) )
     fprintf( fp, "%s: %.10f %.10f %.10f %.10f %.10f %.10f\n", name,
-      zVec6DElem(&_rkc(prp)->dis,zX),
-      zVec6DElem(&_rkc(prp)->dis,zY),
-      zVec6DElem(&_rkc(prp)->dis,zZ),
-      zVec6DElem(&_rkc(prp)->dis,zXA),
-      zVec6DElem(&_rkc(prp)->dis,zYA),
-      zVec6DElem(&_rkc(prp)->dis,zZA) );
+      _rkc(prp)->dis.e[zX],  _rkc(prp)->dis.e[zY],  _rkc(prp)->dis.e[zZ],
+      _rkc(prp)->dis.e[zXA], _rkc(prp)->dis.e[zYA], _rkc(prp)->dis.e[zZA] );
 }
 
 static zVec3D* (*_rk_joint_axis_float_ang[])(void*,zFrame3D*,zVec3D*) = {
@@ -304,10 +300,10 @@ void _rkJointABIAxisInertiaFloat(void *prp, zMat6D *m, zMat h){
 
   for( i=0; i<3; i++ )
     for( j=0; j<3; j++ ){
-      zMatElem(h,i,  j)   = zMat3DElem(zMat6DMat3D(m,0,0),i,j);
-      zMatElem(h,i+3,j)   = zMat3DElem(zMat6DMat3D(m,1,0),i,j);
-      zMatElem(h,i,  j+3) = zMat3DElem(zMat6DMat3D(m,0,1),i,j);
-      zMatElem(h,i+3,j+3) = zMat3DElem(zMat6DMat3D(m,1,1),i,j);
+      zMatElem(h,i,  j)   = zMat6DMat3D(m,0,0)->e[j][i];
+      zMatElem(h,i+3,j)   = zMat6DMat3D(m,1,0)->e[j][i];
+      zMatElem(h,i,  j+3) = zMat6DMat3D(m,0,1)->e[j][i];
+      zMatElem(h,i+3,j+3) = zMat6DMat3D(m,1,1)->e[j][i];
     }
 }
 void _rkJointABIAddAbiBiosFloat(void *prp, zMat6D *I, zMat6D *J, zVec6D *b, zMat h, zMat6D *pi, zVec6D *pb){}
@@ -318,9 +314,9 @@ void _rkJointABIQAccFloat(void *prp, zMat3D *R, zMat6D *I, zVec6D *b, zVec6D *ja
 
   /* acc */
   zVec6DRev(b, &tempv2);
-  for(i=0;i<6;i++)
-    zVec6DElem(&tempv, i) = zVec6DInnerProd((zVec6D *)&zMatElem(h, i, 0), &tempv2);
-  zVec6DCopy(&tempv, acc);
+  for(i=zX;i<=zZA;i++)
+    tempv.e[i] = zVec6DInnerProd( (zVec6D *)&zMatElem(h,i,0), &tempv2 );
+  zVec6DCopy( &tempv, acc );
 
   /* q */
   zVec6DSubDRC(&tempv, jac);

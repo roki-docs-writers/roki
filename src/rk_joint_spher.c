@@ -193,7 +193,7 @@ bool _rkJointQueryFReadSpher(FILE *fp, char *buf, void *prp, rkMotor *marray, in
 
   if( strcmp( buf, "dis" ) == 0 ){
     zVec3DFRead( fp, &aa );
-    _rkJointSetDisSpher( prp, zVec3DArray(&aa) );
+    _rkJointSetDisSpher( prp, aa.e );
   } else
   if( strcmp( buf, "motor" ) == 0 ){
     zFToken( fp, buf, BUFSIZ );
@@ -217,9 +217,7 @@ void _rkJointFWriteSpher(FILE *fp, void *prp, char *name)
 {
   if( !zVec3DIsTiny( &_rkc(prp)->aa ) )
     fprintf( fp, "%s: %.10f %.10f %.10f\n", name,
-      zVec3DElem(&_rkc(prp)->aa,zX),
-      zVec3DElem(&_rkc(prp)->aa,zY),
-      zVec3DElem(&_rkc(prp)->aa,zZ) );
+      _rkc(prp)->aa.e[zX], _rkc(prp)->aa.e[zY], _rkc(prp)->aa.e[zZ] );
 }
 
 static zVec3D* (*_rk_joint_axis_spher_ang[])(void*,zFrame3D*,zVec3D*) = {
@@ -285,10 +283,10 @@ void _rkJointMotorInputTrqSpher(void *prp, double *val){
   rkMotorInputTrq( &_rkc(prp)->m, val );
 }
 void _rkJointMotorResistanceSpher(void *prp, double *val){
-  rkMotorRegistance( &_rkc(prp)->m, &zVec3DElem( &_rkc(prp)->aa, 0 ), &zVec3DElem( &_rkc(prp)->vel, 0 ), val );
+  rkMotorRegistance( &_rkc(prp)->m, &_rkc(prp)->aa.e[zX], &_rkc(prp)->vel.e[zX], val );
 }
 void _rkJointMotorDrivingTrqSpher(void *prp, double *val){
-  rkMotorDrivingTrq( &_rkc(prp)->m, &zVec3DElem( &_rkc(prp)->aa, 0 ), &zVec3DElem( &_rkc(prp)->vel, 0 ), &zVec3DElem( &_rkc(prp)->acc, 0 ), val );
+  rkMotorDrivingTrq( &_rkc(prp)->m, &_rkc(prp)->aa.e[zX], &_rkc(prp)->vel.e[zX], &_rkc(prp)->acc.e[zX], val );
 }
 
 static rkJointMotorCom rk_joint_motor_spher = {

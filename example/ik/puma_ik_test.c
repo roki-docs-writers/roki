@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
   rkIKBind( &ik ); /* bind current status to the reference. */
   rkIKCellSetRef( cell[0],
     zDeg2Rad(zRandF(-30,30)), zDeg2Rad(zRandF(0,45)), zDeg2Rad(zRandF(-30,30)) );
-  zVec3DSetElem( &cell[1]->data.ref.pos, zZ, zRandF(0.1,0.6) );
+  cell[1]->data.ref.pos.e[zZ] = zRandF(0.1,0.6);
   printf( "++ initial frame\n" );
   zFrame3DWrite( rkChainLinkWldFrame(ik.chain,6) );
   rkIKSolve( &ik, dis, zTOL, 0 );

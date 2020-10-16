@@ -29,8 +29,8 @@ typedef struct _rkMP{
 #define rkMPCOM(mp)            ( &(mp)->com )
 #define rkMPInertia(mp)        ( &(mp)->inertia )
 
-#define rkMPCOMElem(mp,i)       zVec3DElem( rkMPCOM(mp), i )
-#define rkMPInertiaElem(mp,i,j) zMat3DElem( rkMPInertia(mp), i, j )
+#define rkMPCOMElem(mp,i)       rkMPCOM(mp)->e[i]
+#define rkMPInertiaElem(mp,i,j) rkMPInertia(mp)->e[j][i]
 
 #define rkMPSetMass(mp,m)      ( rkMPMass(mp) = (m) )
 #define rkMPSetCOM(mp,c)       zVec3DCopy( c, rkMPCOM(mp) )
@@ -63,16 +63,11 @@ __EXPORT zMat3D *rkMPOrgInertia(rkMP *mp, zMat3D *i);
  */
 __EXPORT zEllips3D *rkMPInertiaEllips(rkMP *mp, zEllips3D *ie);
 
-/* rkMPFWrite, rkMPWrite
- * - output mass property.
- * [SYNOPSIS]
- * void rkMPFWrite(FILE *fp, rkMP *mp);
- * void rkMPWrite(rkMP *mp);
- * [DESCRIPTION]
- * 'rkMPFWrite()' outputs a set of mass properties 'mp'
- * to the current position of file pointed by 'fp' in
- * the following form.
- * #
+/*! \brief output mass property.
+ *
+ * rkMPFWrite() outputs a set of mass properties \a mp to the current
+ * position of a file \a fp in the following format.
+ *
  *  mass: <m>
  *  COM:  { <x>, <y>, <z> }
  *  inertia: {
@@ -80,12 +75,11 @@ __EXPORT zEllips3D *rkMPInertiaEllips(rkMP *mp, zEllips3D *ie);
  *    <iyx>, <iyy>, <iyz>,
  *    <izx>, <iyz>, <izz>
  *  }
- * #
- * 'rkMPWrite()' outputs 'mp' to the standard output
- * in the above format.
- * [RETURN VALUE]
- * Neither 'rkMPFWrite()' nor 'rkMPWrite()' return any
- * values.
+ *
+ * rkMPWrite() outputs a set of mass properties \a mp to the standard
+ * output in the same format with the above.
+ * \return
+ * rkMPFWrite() and rkMPWrite() return no value.
  */
 __EXPORT void rkMPFWrite(FILE *fp, rkMP *mp);
 #define rkMPWrite(mp) rkMPFWrite( stdout, mp )
@@ -150,20 +144,15 @@ typedef struct{
 #define rkBodySetStuff(b,m)   ( rkBodyStuff(b) = zStrClone(m) )
 #define rkBodyStuffDestroy(b) zFree( rkBodyStuff(b) )
 
-/* METHOD:
- * rkBodyInit, rkBodyDestroy
- * - initialize and destroy body object.
- * [SYNOPSIS]
- * void rkBodyInit(rkBody *b);
- * void rkBodyDestroy(rkBody *b);
- * [DESCRIPTION]
- * 'rkBodyInit()' initializes a body object 'b', cleaning up
- * all inner properties.
- * #
- * 'rkBodyDestroy()' destroys 'b', freeing the memory space
- * allocated for its name and extern force, and cleaning it up.
- * [RETURN VALUE]
- * Neither 'rkBodyInit()' nor 'rkBodyDestroy()' returns any values.
+/*! \brief initialize and destroy body object.
+ *
+ * rkBodyInit() initializes a body object \a b by cleaning up all
+ * internal properties.
+ *
+ * rkBodyDestroy() destroys a body object \a b by freeing the memory
+ * space allocated for its name and external forces.
+ * \return
+ * rkBodyInit() and rkBodyDestroy() return no value.
  */
 __EXPORT void rkBodyInit(rkBody *b);
 __EXPORT void rkBodyDestroy(rkBody *b);
@@ -193,128 +182,104 @@ __EXPORT rkBody *rkBodyCombineDRC(rkBody *b, rkBody *sb);
  */
 #define rkBodyInertiaEllips(b,e) rkMPInertiaEllips( rkBodyMP(b), e )
 
-/* METHOD:
- * rkBodyUpdateCOM, rkBodyUpdateCOMRate
- * - update body COM state.
- * [SYNOPSIS]
- * zVec3D *rkBodyUpdateCOM(rkBody *body);
- * void rkBodyUpdateCOMRate(rkBody *body);
- * [DESCRIPTION]
- * 'rkBodyUpdateCOM()' updates COM position of a body
- * 'body', transferring the local COM position of 'body'
- * to that with respect to the world frame. The result
- * is stored into the internal member of 'body', which
- * can be referred by 'rkBodyWldCOM()'.
- * #
- * 'rkBodyUpdateCOMRate()' updates COM velocity and
- * acceleration of 'body' with respect to the inertial
- * frame, using information of the velocity and
- * acceleration of the original point of 'body'
- * and its local COM position. The results are also
- * stored into the internal members, which can be
- * referred by 'rkBodyCOMVel()' and 'rkBodyCOMAcc()'.
- * [RETURN VALUE]
- * 'rkBodyUpdateCOM()' returns a pointer to the updated
- * COM position vector of 'body'.
- * #
- * 'rkBodyUpdateCOMRate()' returns no value.
+/*! \brief update body COM state.
+ *
+ * rkBodyUpdateCOM() updates the COM position of a body \a body by
+ * transferring the local COM position of \a body to that with respect
+ * to the world frame. The result is stored into the internal member
+ * of \a body, which can be referred by rkBodyWldCOM().
+ *
+ * rkBodyUpdateCOMRate() updates the COM velocity and acceleration of
+ * a body object \a body with respect to the inertial frame by using
+ * information of the velocity and acceleration of the original point
+ * of a body object \a body and its local COM position. The results are
+ * also stored into the internal members, which can be referred by
+ * rkBodyCOMVel() and rkBodyCOMAcc().
+ * \return
+ * rkBodyUpdateCOM() returns a pointer to the updated COM position
+ * vector of \a body.
+ *
+ * rkBodyUpdateCOMRate() returns no value.
  */
 __EXPORT zVec3D *rkBodyUpdateCOM(rkBody *body);
 __EXPORT void rkBodyUpdateCOMRate(rkBody *body);
 
-/* METHOD:
- * rkBodyExtForcePush, rkBodyExtForcePop, rkBodyExtForceDestroy
- * - push and pop external force applied to body.
+/*! \brief push and pop external force applied to body.
  *
- * 'rkBodyExtForcePush()' pushes a new external force list cell
- * 'f' to the list on a body 'b'.
- * #
- * 'rkBodyExtForcePop()' pops the latest external force list
- * cell from the list on 'b'.
- * #
- * 'rkBodyExtForceDestroy()' destroys the external force list
- * on 'b', freeing all cells.
- * [NOTES]
- * When the external force list on 'b' includes statically-allocated
- * cells, 'rkBodyExtForceDestroy()' causes segmentation fault.
- * [RETURN VALUE]
- * 'rkBodyExtForcePush()' returns a pointer to the cell pushed.
- * 'rkBodyExtForcePop()' returns a pointer to the cell poped.
- * 'rkBodyExtForceDestroy()' returns no value.
+ * rkBodyExtForcePush() pushes a new external force list cell \a f to
+ * the list on a body object \a b.
+ *
+ * rkBodyExtForcePop() pops the latest external force list cell from
+ * the list on a body object \a b.
+ *
+ * rkBodyExtForceDestroy() destroys the external force list on a body
+ * object \a b by freeing all cells.
+ * \notes
+ * When the external force list on \a b includes statically-allocated
+ * cells, rkBodyExtForceDestroy() causes segmentation fault.
+ * \return
+ * rkBodyExtForcePush() returns a pointer to the cell pushed.
+ * rkBodyExtForcePop() returns a pointer to the cell poped.
+ * rkBodyExtForceDestroy() returns no value.
  */
 #define rkBodyExtWrenchPush(b,f)  rkWrenchListPush( rkBodyExtWrench(b), f )
 #define rkBodyExtWrenchPop(b)     rkWrenchListPop( rkBodyExtWrench(b) )
 #define rkBodyExtWrenchDestroy(b) rkWrenchListDestroy( rkBodyExtWrench(b) )
 
-/* METHOD:
- * rkBodyCalcExtForce6D
- * - calculation of total 6D external force acting to body.
- * [SYNOPSIS]
- * zVec6D *rkBodyCalcExtForce6D(rkBody *b, zVec6D *f);
- * [DESCRIPTION]
- * 'rkBodyCalcExtForce6D()' calculates the total 6D external
- * force equivalent to the sumation of forces contained in
- * the force list on a body 'b'.
- * The result is put into 'f'.
- * [RETURN VALUE]
- * 'rkBodyCalcExtForce6D()' returns a pointer 'f'.
+/*! \brief calculate total 6D external force acting to a body.
+ *
+ * rkBodyCalcExtForce6D() calculates the total 6D external force
+ * equivalent to the sumation of forces contained in the force list on
+ * a body object \a b. The result is put into \a f.
+ * \return
+ * rkBodyCalcExtForce6D() returns a pointer \a f.
  */
 #define rkBodyCalcExtWrench(b,f) rkWrenchListNet( rkBodyExtWrench(b), f )
 
-/* METHOD:
- * rkBodyNetWrench - net wrench exerted on body.
+/*! \brief net wrench exerted on body.
  *
- * 'rkBodyNetForce()' computes net six-axis force applied
- * to the body 'body', based on Newton-Euler s equation
- * of motion.
- * [NOTES]
- * It assumes that the orientation of absolute velocity
- * and acceleration of the body is all with respect to
- * the local frame of 'body' itself. Consequently, the
- * resultant net force-moment is also with respect to
- * the local frame in terms of orientation.
+ * rkBodyNetForce() computes the net six-axis force applied to a body object
+ * \a body based on Newton-Euler's equation of motion.
+ * \notes
+ * It is assumed that the orientation of absolute velocity and acceleration
+ * of the body \a body is all with respect to the local frame of \a body
+ * itself. Consequently, the result net force-moment is also with respect
+ * to the local frame in terms of orientation.
  */
 __EXPORT zVec6D *rkBodyNetWrench(rkBody *body, zVec6D *w);
 
-/* METHOD:
- * rkBodyAM, rkBodyKE
- * - angular momentum and kinematic energy of body.
- * [SYNOPSIS]
- * zVec3D *rkBodyAM(rkBody *b, zVec3D *p, zVec3D *am);
- * double rkBodyKE(rkBody *b);
- * [DESCRIPTION]
- * 'rkBodyAM()' calculates angular momentum of body 'b'
- * around the point 'p', and stores the result into 'am'.
- * Both 'p' and 'am' are with respect to the body frame.
- * #
- * 'rkBodyKE Energy()' calculates kinematic energy
- * originating from linear and angular velocity of 'b'.
- * [RETURN VALUE]
- * 'rkBodyAM()' returns a pointer 'am'.
- * 'rkBodyKE()' returns a value calculated.
+/*! \brief angular momentum and kinematic energy of body.
+ *
+ * rkBodyAM() calculates the angular momentum of a body object \a b
+ * around a point \a p and stores the result into \a am. Both \a p and
+ * \a am are with respect to the body frame.
+ *
+ * rkBodyKE() calculates the kinematic energy originating from linear
+ * and angular velocity of a body object \a b.
+ * \return
+ * rkBodyAM() returns a pointer \a am.
+ * rkBodyKE() returns the value calculated.
  */
 __EXPORT zVec3D *rkBodyAM(rkBody *b, zVec3D *p, zVec3D *am);
 __EXPORT double rkBodyKE(rkBody *b);
 
-/* METHOD:
- * rkBodyShapePush, rkBodyShapePop, rkBodyShapeDestroy
- * - push and pop of shape attached to body.
+/*! \brief push and pop of shape attached to body.
  *
- * 'rkBodyShapePush()' pushes a new shape 'shape' to the
- * shape list of a body 'b'.
- * #
- * 'rkBodyShapePop()' pops the last shape attached to 'b'
- * from the list.
- * #
- * 'rkBodyShapeDestroy()' destroys the shape list of 'b',
- * freeing all cells.
- * [NOTES]
- * When the shape list of 'b' includes statically-allocated
- * cells, 'rkBodyShapeDestroy()' causes segmentation fault.
- * [RETURN VALUE]
- * 'rkBodyShapePush()' returns a pointer to the cell pushed.
- * 'rkBodyShapePop()' returns a pointer to the shape poped.
- * 'rkBodyShapeDestroy()' returns no value.
+ * rkBodyShapePush() pushes a new shape \a shape to the shape list of
+ * a body object \a b.
+ *
+ * rkBodyShapePop() pops the last shape of the list attached to a body
+ * object \a b.
+ *
+ * rkBodyShapeDestroy() destroys the shape list of a body object \a b
+ * by freeing all cells.
+ * \notes
+ * When the shape list of the body \a b includes statically-allocated
+ * cells, rkBodyShapeDestroy() causes segmentation fault.
+ * \return
+ * rkBodyShapePush() returns a pointer to the cell pushed.
+ * rkBodyShapePop() returns a pointer to the shape poped.
+ * rkBodyShapeDestroy() returns no value.
  */
 #define rkBodyShapePush(b,s)  zShapeListPush( rkBodyShapeList(b), s )
 #define rkBodyShapePop(b)     zShapeListPop( rkBodyShapeList(b) )

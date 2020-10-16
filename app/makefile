@@ -23,7 +23,7 @@ INSTALL=install -m 755
 
 CONFIGGEN=cure-config-gen
 CONFIG=roki-config
-TARGET=$(CONFIG) cad2zkc zkcconv z3d2zkc z3d2gp zvs2zkci zvs2zkcs\
+TARGET=$(CONFIG) cad2zkc zkcconv z3d2zkc zkc2z3d z3d2gp zvs2zkci zvs2zkcs\
 	rk_ground rk_mp rk_fk rk_ik rk_id rk_ikcell_merge
 
 #####################################################################

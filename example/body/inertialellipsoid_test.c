@@ -7,7 +7,7 @@ void output(zEllips3D *e, zVec3D *c, zMat3D *r)
   zMat3D rt;
   zVec3D v;
 
-  zEllips3DCreate( e, c, zMat3DVec(r,0), zMat3DVec(r,1), zMat3DVec(r,2), 2, 8, 17, 0 );
+  zEllips3DCreate( e, c, &r->v[0], &r->v[1], &r->v[2], 2, 8, 17, 0 );
   rkMPSetMass( &mp, zEllips3DVolume(e) );
   rkMPSetCOM( &mp, zEllips3DCenter(e) );
   zEllips3DInertia( e, rkMPInertia(&mp) );

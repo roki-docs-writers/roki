@@ -131,7 +131,7 @@ zVec3D *_rkJointAxisNull(void *prp, zFrame3D *f, zVec3D *a){
 }
 
 zVec3D *_rkJointAxisZ(void *prp, zFrame3D *f, zVec3D *a){
-  zVec3DCopy( zMat3DVec(zFrame3DAtt(f),zZ), a );
+  zVec3DCopy( &zFrame3DAtt(f)->e[2], a );
   return a;
 }
 
@@ -143,9 +143,9 @@ double rkJointTorsionDisRevol(zFrame3D *dev, zVec6D *t)
   zVec3D aa;
   double l, angle;
 
-  zVec3DCreate( &aa, -zMat3DElem(zFrame3DAtt(dev),1,2), zMat3DElem(zFrame3DAtt(dev),0,2), 0 );
-  l = sqrt( zSqr(zVec3DElem(&aa,zX))+zSqr(zVec3DElem(&aa,zY)) );
-  angle = atan2( l, zMat3DElem(zFrame3DAtt(dev),2,2) );
+  zVec3DCreate( &aa, -zFrame3DAtt(dev)->e[2][1], zFrame3DAtt(dev)->e[2][0], 0 );
+  l = sqrt( zSqr(aa.e[zX]) + zSqr(aa.e[zY]) );
+  angle = atan2( l, zFrame3DAtt(dev)->e[2][2] );
   zIsTiny( angle ) ?
     zVec3DClear( &aa ) : zVec3DMulDRC( &aa, angle/l );
   zMulMatTVec3D( zFrame3DAtt(dev), &aa, zVec6DAng(t) );
@@ -153,8 +153,8 @@ double rkJointTorsionDisRevol(zFrame3D *dev, zVec6D *t)
   zMat3DAA( &rm, &aa );
   /* joint displacement */
   return 0.5 *
-    ( zVec3DAngle( zMat3DVec(&rm,zX), zMat3DVec(zFrame3DAtt(dev),zX), zMat3DVec(&rm,zZ) )
-    + zVec3DAngle( zMat3DVec(&rm,zY), zMat3DVec(zFrame3DAtt(dev),zY), zMat3DVec(&rm,zZ) ) );
+    ( zVec3DAngle( &rm.v[zX], &zFrame3DAtt(dev)->v[zX], &rm.v[zZ] )
+    + zVec3DAngle( &rm.v[zY], &zFrame3DAtt(dev)->v[zY], &rm.v[zZ] ) );
 }
 
 double rkJointTorsionDisPrism(zFrame3D *dev, zVec6D *t)
@@ -163,7 +163,7 @@ double rkJointTorsionDisPrism(zFrame3D *dev, zVec6D *t)
 
   zMulMatTVec3D( zFrame3DAtt(dev), zFrame3DPos(dev), zVec6DLin(t) );
   /* joint displacement */
-  q = zVec6DElem( t, zZ );
-  zVec6DElem(t,zZ) = 0;
+  q = t->e[zZ];
+  t->e[zZ] = 0;
   return q;
 }

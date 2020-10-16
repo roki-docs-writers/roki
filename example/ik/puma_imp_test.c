@@ -40,9 +40,9 @@ int main(int argc, char *argv[])
   dis = zVecAlloc( rkChainJointSize( &puma ) );
 
   /* initial position and attitude */
-  x0 = zVec3DElem(rkChainLinkWldPos(ik.chain,6),zX) + 0.05;
+  x0 = rkChainLinkWldPos(ik.chain,6)->e[zX] + 0.05;
   y0 = 0;
-  z0 = zVec3DElem(rkChainLinkWldPos(ik.chain,6),zZ) + 0.1;
+  z0 = rkChainLinkWldPos(ik.chain,6)->e[zZ] + 0.1;
 
   fp = fopen( "rmr", "w" );
   for( i=0; i<=STEP; i++ ){

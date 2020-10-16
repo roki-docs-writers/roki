@@ -30,19 +30,19 @@ bool cad2zkc_mirror(cad2zkc_list_t *list, cad2zkc_t *data, FILE *fin, char buf[]
   data->parent = cad2zkc_pickup( list, buf );
 
   zVec3DCreate( zFrame3DPos(&data->f),
-    zVec3DElem(zFrame3DPos(&p->f),zX),
-   -zVec3DElem(zFrame3DPos(&p->f),zY),
-    zVec3DElem(zFrame3DPos(&p->f),zZ) );
+    zFrame3DPos(&p->f)->e[zX],
+   -zFrame3DPos(&p->f)->e[zY],
+    zFrame3DPos(&p->f)->e[zZ] );
   zMat3DCreate( zFrame3DAtt(&data->f),
-    zMat3DElem(zFrame3DAtt(&p->f),0,0),
-    zMat3DElem(zFrame3DAtt(&p->f),0,1),
-   -zMat3DElem(zFrame3DAtt(&p->f),0,2),
-   -zMat3DElem(zFrame3DAtt(&p->f),1,0),
-   -zMat3DElem(zFrame3DAtt(&p->f),1,1),
-    zMat3DElem(zFrame3DAtt(&p->f),1,2),
-    zMat3DElem(zFrame3DAtt(&p->f),2,0),
-    zMat3DElem(zFrame3DAtt(&p->f),2,1),
-   -zMat3DElem(zFrame3DAtt(&p->f),2,2) );
+    zFrame3DAtt(&p->f)->e[0][0],
+    zFrame3DAtt(&p->f)->e[1][0],
+   -zFrame3DAtt(&p->f)->e[2][0],
+   -zFrame3DAtt(&p->f)->e[0][1],
+   -zFrame3DAtt(&p->f)->e[1][1],
+    zFrame3DAtt(&p->f)->e[2][1],
+    zFrame3DAtt(&p->f)->e[0][2],
+    zFrame3DAtt(&p->f)->e[1][2],
+   -zFrame3DAtt(&p->f)->e[2][2] );
   rkMPSetMass( &data->mp, rkMPMass(&p->mp) );
   zVec3DCreate( rkMPCOM(&data->mp),
     rkMPCOMElem(&p->mp,zX),-rkMPCOMElem(&p->mp,zY), rkMPCOMElem(&p->mp,zZ) );

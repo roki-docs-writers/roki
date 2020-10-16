@@ -12,27 +12,27 @@ static zVec3D *_rkJacobiLinCol(rkLink *l, int i, zFrame3D *f, zVec3D *p, zVec3D 
 static zMat _rkChainLinkAMJacobi(rkChain *c, int id, zVec3D *p, zMat jacobi);
 
 #define __rk_jacobi_set_vector(j,c,k,v) do{\
-  zMatSetElem( j, zX, c, zVec3DElem(v,zX) );\
-  zMatSetElem( j, zY, c, zVec3DElem(v,zY) );\
-  zMatSetElem( j, zZ, c, zVec3DElem(v,zZ) );\
+  zMatSetElem( j, zX, c, (v)->e[zX] );\
+  zMatSetElem( j, zY, c, (v)->e[zY] );\
+  zMatSetElem( j, zZ, c, (v)->e[zZ] );\
 } while(0)
 
 #define __rk_jacobi_add_vector(j,c,k,v) do{\
-  zMatElem(j,zX,c) += zVec3DElem(v,zX);\
-  zMatElem(j,zY,c) += zVec3DElem(v,zY);\
-  zMatElem(j,zZ,c) += zVec3DElem(v,zZ);\
+  zMatElem(j,zX,c) += (v)->e[zX];\
+  zMatElem(j,zY,c) += (v)->e[zY];\
+  zMatElem(j,zZ,c) += (v)->e[zZ];\
 } while(0)
 
 #define __rk_jacobi_sub_vector(j,c,k,v) do{\
-  zMatElem(j,zX,c) -= zVec3DElem(v,zX);\
-  zMatElem(j,zY,c) -= zVec3DElem(v,zY);\
-  zMatElem(j,zZ,c) -= zVec3DElem(v,zZ);\
+  zMatElem(j,zX,c) -= (v)->e[zX];\
+  zMatElem(j,zY,c) -= (v)->e[zY];\
+  zMatElem(j,zZ,c) -= (v)->e[zZ];\
 } while(0)
 
 #define __rk_jacobi_cat_vector(j,c,k,v) do{\
-  zMatElem(j,zX,c) += k*zVec3DElem(v,zX);\
-  zMatElem(j,zY,c) += k*zVec3DElem(v,zY);\
-  zMatElem(j,zZ,c) += k*zVec3DElem(v,zZ);\
+  zMatElem(j,zX,c) += (k)*(v)->e[zX];\
+  zMatElem(j,zY,c) += (k)*(v)->e[zY];\
+  zMatElem(j,zZ,c) += (k)*(v)->e[zZ];\
 } while(0)
 
 #define __rk_jacobi_ang_col(l,f,m,op,s) do{\

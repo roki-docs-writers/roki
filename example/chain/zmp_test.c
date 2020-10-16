@@ -13,7 +13,7 @@ void update_dis(int st)
 {
   register int i;
 
-  for( i=7; i<_zVecSize(dis); i++ )
+  for( i=7; i<zVecSizeNC(dis); i++ )
     zVecSetElem( dis, i, DTHETA*(1-cos(2*zPI*st/STEP)) );
 }
 
@@ -21,9 +21,9 @@ void total_zmp_test(void)
 {
   zVec3D zmp;
 
-  printf( "%.10f %.10f %.10f ", zVec3DElem(rkChainWldCOM(&chain),zX), zVec3DElem(rkChainWldCOM(&chain),zY), zVec3DElem(rkChainWldCOM(&chain),zZ) );
+  zVec3DDataWrite( rkChainWldCOM(&chain) );
   rkChainZMP( &chain, 0, &zmp );
-  printf( "%.10f %.10f %.10f\n", zVec3DElem(&zmp,zX), zVec3DElem(&zmp,zY), zVec3DElem(&zmp,zZ) );
+  zVec3DDataNLWrite( &zmp );
 }
 
 int main(void)

@@ -64,8 +64,8 @@ void link_am_test(rkChain *chain, zMat jacobi, zVec3D *v)
   zVec3D tp;
 
   eprintf( "link angular momentum test\n" );
-  rkChainLinkAMJacobi( chain, TIP, Z_ZEROVEC3D, jacobi );
-  zXfer3DInv( rkChainLinkWldFrame(chain,TIP), Z_ZEROVEC3D, &tp );
+  rkChainLinkAMJacobi( chain, TIP, ZVEC3DZERO, jacobi );
+  zXfer3DInv( rkChainLinkWldFrame(chain,TIP), ZVEC3DZERO, &tp );
   rkLinkAM( rkChainLink(chain,TIP), &tp, v );
   zMulMatVec3DDRC( rkChainLinkWldAtt(chain,TIP), v );
 }
@@ -73,8 +73,8 @@ void link_am_test(rkChain *chain, zMat jacobi, zVec3D *v)
 void am_test(rkChain *chain, zMat jacobi, zVec3D *v)
 {
   eprintf( "chain angular momentum test\n" );
-  rkChainAMJacobi( chain, Z_ZEROVEC3D, jacobi );
-  rkChainAM( chain, Z_ZEROVEC3D, v );
+  rkChainAMJacobi( chain, ZVEC3DZERO, jacobi );
+  rkChainAM( chain, ZVEC3DZERO, v );
 }
 
 int main(int argc, char *argv[])
@@ -102,10 +102,10 @@ int main(int argc, char *argv[])
     link_am_test( &chain, jacobi, &v ) : am_test( &chain, jacobi, &v );
 
   zMulMatVec( jacobi, vel, ev );
-  zVec3DSub( (zVec3D*)zVecArray(ev), &v, &err );
-  printf( "%g %g %g ", zVecElem(ev,0), zVecElem(ev,1), zVecElem(ev,2) );
-  printf( "%g %g %g ", zVec3DElem(&v,0), zVec3DElem(&v,1), zVec3DElem(&v,2) );
-  printf( "%g %g %g\n", zVec3DElem(&err,0), zVec3DElem(&err,1), zVec3DElem(&err,2) );
+  zVec3DSub( (zVec3D*)zVecBuf(ev), &v, &err );
+  zVec3DDataWrite( (zVec3D*)zVecBuf(ev) );
+  zVec3DDataWrite( &v );
+  zVec3DDataNLWrite( &err );
   printf( " ... %s.\n", zVec3DIsTiny( &err ) ? "OK" : "BUG probably in Jacobian matrix computation" );
 
   /* termination */
