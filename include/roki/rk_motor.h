@@ -16,6 +16,7 @@ __BEGIN_DECLS
 enum{
   RK_MOTOR_INVALID=-1,
   RK_MOTOR_NONE=0,     /* not actuated */
+  RK_MOTOR_TRQ,        /* torque motor */
   RK_MOTOR_DC,         /* DC motor */
 };
 
@@ -93,6 +94,7 @@ __EXPORT void rkMotorArrayFWrite(FILE *fp, rkMotorArray *m);
 __END_DECLS
 
 #include <roki/rk_motor_none.h> /* for unactuated joints */
+#include <roki/rk_motor_trq.h>  /* direct torque motor */
 #include <roki/rk_motor_dc.h>   /* DC motor */
 
 #endif /* __RK_MOTOR_H__ */

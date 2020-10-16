@@ -11,7 +11,7 @@
 /* motor type
  * ********************************************************** */
 static char *__rkmotortypename[] = {
-  "none", "dc",
+  "none", "trq", "dc",
   NULL,
 };
 
@@ -36,6 +36,7 @@ byte rkMotorTypeFromStr(char *str)
  * ********************************************************** */
 static rkMotor *(* rk_motor_create[])(rkMotor*) = {
   rkMotorCreateNone,
+  rkMotorCreateTRQ,
   rkMotorCreateDC,
 };
 

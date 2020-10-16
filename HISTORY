@@ -1,3 +1,4 @@
+2015. 5.21. Added rk_motor_trq with Naoki Wakisaka's contribution. [rk_motor, rk_motor_trq]
 2015. 5. 4. Reflected modification of zOptionRead. [app]
 2015. 4.30. Removed zVec3DElem, zVec6DElem, zMat3DElem and zMat3DVec from sources. [all]
 2015. 4.29. Debugged rkLinkUpdateRate. [rk_link]
